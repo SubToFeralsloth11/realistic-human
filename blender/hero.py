@@ -102,7 +102,8 @@ def main():
     scene.cycles.use_adaptive_sampling = True
     cam = C.add_camera((0, -4, 1.2), (0, 0, 1.0), lens=50)
     for shot in shots:
-        gun = None
+        if shot not in ("full", "portrait", "eyes", "aim", "hand"):
+            continue
         if shot in ("aim", "hand"):
             import pistol
             if "Pistol" not in bpy.data.objects:
@@ -148,22 +149,25 @@ def main():
         C.render(os.path.join(out, f"hero_{shot}.png"))
     nturn = int(opt(a, "--turntable", "0"))
     if nturn:
+        # the character spins on a turntable in front of a fixed camera (an orbiting camera ends
+        # up behind the cyclorama wall for the back half)
         pose_rig(rig, relaxed)
-        for name in ("Pistol",):
-            if name in bpy.data.objects:
-                for ob in [o for o in bpy.data.objects if o.name.startswith("Pistol") or o.parent and o.parent.name == "Pistol"]:
-                    ob.hide_render = True
-        anim.setup_eevee(res=(1080, 1350), samples=64, blur=False)
+        for ob in bpy.data.objects:
+            if ob.name.startswith("Pistol") or (ob.parent and ob.parent.name == "Pistol"):
+                ob.hide_render = True
+            if "stubble" in ob.name.lower():                   # EEVEE draws stubble too thick
+                ob.hide_render = True
+        spin = bpy.data.objects.new("Turntable", None)
+        bpy.context.scene.collection.objects.link(spin)
+        mw = rig.matrix_world.copy()
+        rig.parent = spin
+        rig.matrix_world = mw
         frames = np.arange(1, nturn + 1)
-        mats = []
-        for k in frames:
-            ang = 2 * math.pi * (k - 1) / nturn
-            loc = Vector((math.sin(ang) * 4.0, -math.cos(ang) * 4.0, 1.05))
-            rot = (Vector((0, 0, 0.92)) - loc).to_track_quat("-Z", "Y")
-            mats.append(Matrix.LocRotScale(loc, rot, Vector((1, 1, 1))))
+        anim.key_channels(spin, frames, {("rotation_euler", 2): [2 * math.pi * (k - 1) / nturn for k in frames]})
+        anim.setup_eevee(res=(1080, 1350), samples=64, blur=False)
         cam.data.lens = 50
         cam.data.dof.use_dof = False
-        anim.key_object(cam, frames, mats, name="turntable")
+        C.orbit_camera(cam, (0.0, 0.0, 0.92), 4.0, 0, 2)
         anim.render_mp4(os.path.join(out, "turntable.mp4"), 1, nturn)
 
 
