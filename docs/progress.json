@@ -1,7 +1,7 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-08T21:59:09+10:00",
- "now": "Rendering the pistol routine and the animation clips",
+ "updated": "2026-11-08T22:15:31+10:00",
+ "now": "Rendering the pistol routine and nine clips (EEVEE 720p), then Cycles hero stills",
  "phases": [
   {
    "name": "Setup",
@@ -103,6 +103,7 @@
      "status": "active",
      "note": "Crop, brows, lashes on eyelid bones, stubble; Chiang hair in Cycles, Kajiya-Kay in EEVEE",
      "media": [
+      "media/eevee_face_khronos.jpg",
       "media/face_hair_p4.jpg"
      ]
     }
@@ -253,7 +254,11 @@
     {
      "id": "videos",
      "name": "Animation preview videos",
-     "status": "todo"
+     "status": "active",
+     "media": [
+      "media/anim_proof_dressed.jpg"
+     ],
+     "note": "Rendering all clips at 1280x720 in EEVEE"
     },
     {
      "id": "docs",
@@ -275,6 +280,20 @@
   "Teeth": "28 teeth + gums + tongue, 172k vertices"
  },
  "gallery": [
+  {
+   "src": "media/anim_proof_dressed.jpg",
+   "caption": "Dressed proofs of every clip: walk, run, jump, backflip, fall, shot, crouch, punch, idle",
+   "time": "2026-11-08T22:15:31+10:00",
+   "type": "image",
+   "item": "videos"
+  },
+  {
+   "src": "media/eevee_face_khronos.jpg",
+   "caption": "EEVEE preview look after fixes: dark hair (EEVEE-specific hair output), no hair on the ears, seam-free neck, Khronos PBR Neutral colour",
+   "time": "2026-11-08T22:15:31+10:00",
+   "type": "image",
+   "item": "hair"
+  },
   {
    "src": "media/anim_proof_punch_fall_shot.jpg",
    "caption": "Punch combo, trip-and-fall and getting-shot ragdoll proofs",
