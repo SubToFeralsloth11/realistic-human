@@ -185,13 +185,29 @@ def iris_material(name="EyeInner", iris_a=(0.035, 0.022, 0.009), iris_b=(0.13, 0
 
 
 def cornea_material(name="Cornea"):
+    """Refractive cornea + tear film in Cycles; in EEVEE a clear coat over the iris (EEVEE's
+    screen-space refraction turns small closed refractive shells black)."""
     mat = bpy.data.materials.new(name)
-    p = mat.node_tree.nodes.get("Principled BSDF")
+    nt = mat.node_tree
+    p = nt.nodes.get("Principled BSDF")
     p.inputs["Base Color"].default_value = (1, 1, 1, 1)
     p.inputs["Roughness"].default_value = 0.0
     p.inputs["IOR"].default_value = 1.376
     p.inputs["Transmission Weight"].default_value = 1.0
-    mat.use_screen_refraction = True if hasattr(mat, "use_screen_refraction") else False
+    out = nt.nodes.get("Material Output")
+    out.target = "CYCLES"
+    ev = nt.nodes.new("ShaderNodeOutputMaterial")
+    ev.target = "EEVEE"
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    gl = nt.nodes.new("ShaderNodeBsdfGlossy")
+    gl.inputs["Roughness"].default_value = 0.02
+    fr = nt.nodes.new("ShaderNodeFresnel")
+    fr.inputs["IOR"].default_value = 1.376
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(fr.outputs[0], mix.inputs[0])
+    nt.links.new(tr.outputs[0], mix.inputs[1])
+    nt.links.new(gl.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], ev.inputs[0])
     if hasattr(mat, "surface_render_method"):
         mat.surface_render_method = "BLENDED"
     return mat
