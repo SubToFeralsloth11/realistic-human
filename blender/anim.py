@@ -180,12 +180,11 @@ def setup_eevee(res=(1280, 720), samples=48, blur=True):
     scene.render.resolution_x, scene.render.resolution_y = res
     scene.render.resolution_percentage = 100
     scene.render.fps = FPS
-    scene.view_settings.view_transform = "AgX"
-    scene.view_settings.look = "AgX - Medium High Contrast"
+    # Khronos PBR Neutral keeps skin and sky saturation under the outdoor sun (AgX washed both out)
+    scene.view_settings.view_transform = "Khronos PBR Neutral"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = -0.4
     scene.render.image_settings.file_format = "PNG"
-    for m in bpy.data.materials:
-        if hasattr(m, "use_raytrace_refraction") and m.name.startswith("Cornea"):
-            m.use_raytrace_refraction = True
     return scene
 
 
