@@ -82,6 +82,14 @@ def build_character(npz=None, with_eyes=True, material=True):
     data = np.load(npz)
     body = C.load_npz_mesh(npz, "Body")
     assign_weights(body, data["bone_names"], data["w_idx"], data["w_val"])
+    if "seam_idx" in data.files:
+        # zip strips lie flat in their cut planes; give their rim vertices the true surface normal
+        me = body.data
+        nrm = np.empty(len(me.vertices) * 3, np.float32)
+        me.vertex_normals.foreach_get("vector", nrm)
+        nrm = nrm.reshape(-1, 3)
+        nrm[data["seam_idx"]] = data["seam_nrm"]
+        me.normals_split_custom_set_from_vertices(nrm)
     if material:
         body.data.materials.append(skin.skin_material())
     rig_ob = build_armature(rig)

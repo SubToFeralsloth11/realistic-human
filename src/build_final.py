@@ -20,7 +20,7 @@ from build_body import make_program  # noqa: E402
 from rh import head, masks, rig, weights  # noqa: E402
 from rh.mesher import surface_nets  # noqa: E402
 from rh.skeleton import HAND, HEAD, J  # noqa: E402
-from rh.stitch import Mesh, zip_meshes  # noqa: E402
+from rh.stitch import Mesh, seam_normals, zip_meshes  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -78,8 +78,10 @@ def main():
     names, idx, w = weights.compute(M.verts, M.faces, M.sizes, prog, bones)
     log("weights")
     attrs = {f"attr_{k}": v for k, v in M.attrs.items()}
+    seam_idx, seam_nrm = seam_normals(M.verts, M.faces, M.sizes, prog)
+    log(f"seam normals for {len(seam_idx)} rim vertices")
     np.savez(a.out, verts=M.verts, faces=M.faces, sizes=M.sizes, bone_names=np.array(names),
-             w_idx=idx, w_val=w, **attrs)
+             w_idx=idx, w_val=w, seam_idx=seam_idx, seam_nrm=seam_nrm, **attrs)
     with open(os.path.join(ROOT, "build", "rig.json"), "w") as f:
         json.dump({k: {"head": v[0].tolist(), "tail": v[1].tolist(), "parent": v[2], "z": v[3].tolist()}
                    for k, v in bones.items()}, f, indent=1)

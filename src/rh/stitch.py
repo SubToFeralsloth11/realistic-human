@@ -147,3 +147,16 @@ def zip_meshes(fine, coarse, n, d, box=None):
     sizes = np.concatenate([A.sizes, B.sizes, np.full(len(tris), 3)])
     attrs = {k: np.concatenate([A.attrs[k], B.attrs[k]]) for k in A.attrs if k in B.attrs}
     return Mesh(verts, faces, sizes, attrs)
+
+
+def seam_normals(verts, faces, sizes, sdf, eps=2e-4):
+    """True surface normals (SDF gradient) for the vertices of the zip strips. The strips lie flat
+    in their cut planes, so normals averaged from faces tilt badly there and show as a line in
+    smooth shading; the renderer overrides these vertices with the returned normals."""
+    off = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+    tri = np.where(sizes == 3)[0]
+    idx = np.unique(np.concatenate([faces[off[tri] + k] for k in range(3)]))
+    P = np.asarray(verts, np.float64)[idx]
+    g = np.stack([(sdf(P + eps * e, 0.01) - sdf(P - eps * e, 0.01)) / (2 * eps) for e in np.eye(3)], 1)
+    g /= np.linalg.norm(g, axis=1, keepdims=True) + 1e-20
+    return idx.astype(np.int64), g.astype(np.float32)
