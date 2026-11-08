@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-09T03:26:07+10:00",
+ "updated": "2026-11-09T03:26:14+10:00",
  "now": "Rendering walk, run, backflip, jump, fall, shot, idle, crouch, punch, then Cycles hero stills",
  "phases": [
   {
@@ -98,8 +98,9 @@
     {
      "id": "mouth",
      "name": "Teeth + mouth interior",
-     "status": "active",
-     "note": "28 teeth sized from adult averages on a parabolic arch, gums, tongue; oral cavity carved behind the lips; jaw opens in the hit reaction"
+     "status": "done",
+     "note": "28 teeth, gums and tongue sculpted as SDFs; oral cavity carved behind the lips with mucosa shading; the lower set rides the jaw, which opens in the hit reaction",
+     "done": "2026-11-09T03:26:14+10:00"
     },
     {
      "id": "hair",
@@ -576,6 +577,10 @@
   }
  ],
  "log": [
+  {
+   "time": "2026-11-09T03:26:14+10:00",
+   "text": "Done: Teeth + mouth interior. 28 teeth, gums and tongue sculpted as SDFs; oral cavity carved behind the lips with mucosa shading; the lower set rides the jaw, which opens in the hit reaction"
+  },
   {
    "time": "2026-11-09T03:26:07+10:00",
    "text": "Done: Put pistol back in pocket"
