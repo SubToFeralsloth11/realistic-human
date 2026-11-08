@@ -578,7 +578,12 @@ class Shirt:
         e = np.interp(z, [0.86, 0.95, 1.05, 1.18, 1.30, 1.44], [0.022, 0.022, 0.017, 0.010, 0.006, 0.005])
         e = e + 0.004 * back * smoothstep(1.28, 1.05, z)
         base = rh + e
-        R = drape_down(base[::-1], 0.07, tc.ds)[::-1]
+        # fabric falls from the chest and the shoulder blades (front/back), but the side seams
+        # follow the flanks in to the waist; a uniform slope kept the shoulder-girdle width all
+        # the way down and turned the shirt into a tent that swallowed the hanging arms
+        side = np.cos(tc.th) ** 2
+        slope = np.tile(0.07 + 0.50 * side, (len(tc.s), 1))
+        R = drape_down(base[::-1], slope, tc.ds)[::-1]
         R = periodic_smooth(R, 1.5, 2.0)
         slack = np.maximum(R - (rb + 0.004), 0)
         u = (tc.th * 0.16)[None, :]
