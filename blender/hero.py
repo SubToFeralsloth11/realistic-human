@@ -25,7 +25,7 @@ def opt(a, name, default):
     return a[a.index(name) + 1] if name in a else default
 
 
-def cyclorama(color=(0.20, 0.20, 0.21)):
+def cyclorama(color=(0.055, 0.055, 0.058)):
     """Seamless studio backdrop: floor curving up into a back wall."""
     import bmesh
     me = bpy.data.meshes.new("Cyc")
@@ -51,12 +51,14 @@ def cyclorama(color=(0.20, 0.20, 0.21)):
 
 
 def studio(target):
+    """Three-point softbox light at the key:fill ratio of the look-dev portrait (~8:1); a bright
+    fill and a light backdrop flattened the skin to pale pink."""
     t = Vector(target)
-    C.area_light("Key", t + Vector((-1.9, -2.3, 1.2)), t, 420, 1.8, (1.0, 0.95, 0.88))
-    C.area_light("Fill", t + Vector((2.4, -1.8, 0.2)), t, 70, 2.0, (0.88, 0.93, 1.0))
-    C.area_light("Rim", t + Vector((1.4, 2.0, 1.4)), t, 380, 0.8, (1.0, 0.97, 0.92))
-    C.area_light("Rim2", t + Vector((-1.6, 1.8, 1.0)), t, 160, 0.8, (0.92, 0.96, 1.0))
-    C.world_color((0.02, 0.02, 0.022), 1.0)
+    C.area_light("Key", t + Vector((-1.9, -2.3, 1.2)), t, 230, 1.8, (1.0, 0.94, 0.86))
+    C.area_light("Fill", t + Vector((2.4, -1.8, 0.2)), t, 16, 2.0, (0.86, 0.92, 1.0))
+    C.area_light("Rim", t + Vector((1.4, 2.0, 1.4)), t, 180, 0.8, (1.0, 0.96, 0.9))
+    C.area_light("Rim2", t + Vector((-1.6, 1.8, 1.0)), t, 70, 0.8, (0.92, 0.96, 1.0))
+    C.world_color((0.012, 0.012, 0.014), 1.0)
 
 
 def pose_rig(rig, frame):

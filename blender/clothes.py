@@ -141,8 +141,9 @@ def jersey_material(color=(0.115, 0.118, 0.122), name="CottonJersey"):
     fib.node.inputs["Detail"].default_value = 3.0
     heather = g.smooth(0.35, 0.72, fib)
     mott = g.noise(pos, 38.0, 3.0, 0.6)
-    base = g.mix(heather, tuple(c * 0.70 for c in color), tuple(min(1.0, c * 1.55) for c in color))
-    base = g.mix(g.mul(g.sub(mott, 0.5), 0.35), base, tuple(c * 0.8 for c in color), "MULTIPLY")
+    # heather contrast kept to what reads as fibre at arm's length (0.70x..1.55x read as camouflage)
+    base = g.mix(heather, tuple(c * 0.86 for c in color), tuple(min(1.0, c * 1.22) for c in color))
+    base = g.mix(g.mul(g.sub(mott, 0.5), 0.12), base, tuple(c * 0.85 for c in color), "MULTIPLY")
     # rib collar: 1x1 rib running across the band
     collar = g.attr("collar")
     in_collar = g.smooth(0.0262, 0.0245, collar)
