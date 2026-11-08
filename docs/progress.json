@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-09T03:26:14+10:00",
+ "updated": "2026-11-09T03:47:47+10:00",
  "now": "Rendering walk, run, backflip, jump, fall, shot, idle, crouch, punch, then Cycles hero stills",
  "phases": [
   {
@@ -178,7 +178,7 @@
      "media": [
       "media/clips/idle.mp4"
      ],
-     "done": "2026-11-09T03:26:05+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "walk",
@@ -188,7 +188,7 @@
      "media": [
       "media/clips/walk.mp4"
      ],
-     "done": "2026-11-09T03:26:05+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "run",
@@ -197,7 +197,7 @@
      "media": [
       "media/clips/run.mp4"
      ],
-     "done": "2026-11-09T03:26:05+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "jump",
@@ -207,7 +207,7 @@
       "media/clips/jump.mp4",
       "media/anim_proof_walk_run_jump.jpg"
      ],
-     "done": "2026-11-09T03:26:05+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "backflip",
@@ -217,7 +217,7 @@
       "media/clips/backflip.mp4",
       "media/anim_proof_backflip.jpg"
      ],
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "draw",
@@ -227,7 +227,7 @@
      "media": [
       "media/clips/pistol_draw.mp4"
      ],
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:47+10:00"
     },
     {
      "id": "shoot",
@@ -236,7 +236,7 @@
      "media": [
       "media/clips/pistol_shoot.mp4"
      ],
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:47+10:00"
     },
     {
      "id": "reload",
@@ -245,7 +245,7 @@
      "media": [
       "media/clips/pistol_reload.mp4"
      ],
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:47+10:00"
     },
     {
      "id": "holster",
@@ -254,7 +254,7 @@
      "media": [
       "media/clips/pistol_holster.mp4"
      ],
-     "done": "2026-11-09T03:26:07+10:00"
+     "done": "2026-11-09T03:47:47+10:00"
     },
     {
      "id": "fall",
@@ -265,7 +265,7 @@
       "media/anim_proof_punch_fall_shot.jpg"
      ],
      "note": "Verlet ragdoll with a caught foot",
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "shot",
@@ -275,7 +275,7 @@
      "media": [
       "media/clips/shot.mp4"
      ],
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:46+10:00"
     },
     {
      "id": "crouch",
@@ -284,12 +284,16 @@
      "media": [
       "media/clips/crouch.mp4"
      ],
-     "done": "2026-11-09T03:26:06+10:00"
+     "done": "2026-11-09T03:47:47+10:00"
     },
     {
      "id": "punch",
      "name": "Extra: punch combo",
-     "status": "active"
+     "status": "done",
+     "media": [
+      "media/clips/punch.mp4"
+     ],
+     "done": "2026-11-09T03:47:47+10:00"
     }
    ]
   },
@@ -340,90 +344,97 @@
   {
    "src": "media/clips/pistol_full.mp4",
    "caption": "Full pistol routine in one take: draw from the pocket, three shots, reload, put it back",
-   "time": "2026-11-09T03:26:07+10:00",
+   "time": "2026-11-09T03:47:47+10:00",
    "type": "video"
   },
   {
    "src": "media/clips/pistol_holster.mp4",
    "caption": "Put it back: muzzle down, guide the pistol into the right front pocket, hands relax",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:47+10:00",
    "type": "video",
    "item": "holster"
   },
   {
    "src": "media/clips/pistol_reload.mp4",
    "caption": "Reload: thumb the magazine release, empty magazine drops, left hand fetches the spare from the left pocket, seats it, slide release",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:47+10:00",
    "type": "video",
    "item": "reload"
   },
   {
    "src": "media/clips/pistol_shoot.mp4",
    "caption": "Shoot: three rounds; trigger press, slide cycling, recoil and muzzle rise, flash, ejected casings",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:47+10:00",
    "type": "video",
    "item": "shoot"
   },
   {
    "src": "media/clips/pistol_draw.mp4",
    "caption": "Draw: right hand into the front jeans pocket, grip, pull, rotate up to a two-handed aim",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:47+10:00",
    "type": "video",
    "item": "draw"
   },
   {
+   "src": "media/clips/punch.mp4",
+   "caption": "Extra: orthodox stance, guard up; jab, cross (rear heel pivots), left hook, jab, back to neutral",
+   "time": "2026-11-09T03:47:47+10:00",
+   "type": "video",
+   "item": "punch"
+  },
+  {
    "src": "media/clips/crouch.mp4",
    "caption": "Extra: squat down, glance around, stand back up",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:47+10:00",
    "type": "video",
    "item": "crouch"
   },
   {
    "src": "media/clips/shot.mp4",
    "caption": "Getting shot: a round hits the upper left chest; flinch, pain face (jaw opens, eyes squeeze), legs give, collapse (ragdoll)",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "shot"
   },
   {
    "src": "media/clips/fall.mp4",
    "caption": "Trip and fall: the swinging foot catches, he pitches forward and braces; the rest is a Verlet ragdoll with muscle tone",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "fall"
   },
   {
    "src": "media/clips/backflip.mp4",
    "caption": "Standing backflip: dip, arm throw, tuck, full rotation about the centre of mass in 0.72 s of flight, landing",
-   "time": "2026-11-09T03:26:06+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "backflip"
   },
   {
    "src": "media/clips/jump.mp4",
    "caption": "Standing broad jump: counter-movement dip, arm swing, 1.1 m ballistic flight, absorbing landing",
-   "time": "2026-11-09T03:26:05+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "jump"
   },
   {
    "src": "media/clips/idle.mp4",
    "caption": "Standing idle: breathing, slow weight shifts between the legs, glances and blinks",
-   "time": "2026-11-09T03:26:05+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "idle"
   },
   {
    "src": "media/clips/run.mp4",
    "caption": "Run at 3 m/s: flight phase, forward lean, high knee and heel recovery, bent-arm drive",
-   "time": "2026-11-09T03:26:05+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "run"
   },
   {
    "src": "media/clips/walk.mp4",
    "caption": "Walk at 1.2 m/s: heel strike, foot flat, heel-off and toe-off; the pelvis bobs, tilts and turns, the thorax counter-rotates and the arms swing opposite the legs",
-   "time": "2026-11-09T03:26:05+10:00",
+   "time": "2026-11-09T03:47:46+10:00",
    "type": "video",
    "item": "walk"
   },
@@ -577,6 +588,58 @@
   }
  ],
  "log": [
+  {
+   "time": "2026-11-09T03:47:47+10:00",
+   "text": "Done: Put pistol back in pocket"
+  },
+  {
+   "time": "2026-11-09T03:47:47+10:00",
+   "text": "Done: Reload"
+  },
+  {
+   "time": "2026-11-09T03:47:47+10:00",
+   "text": "Done: Shoot (recoil, casings, flash)"
+  },
+  {
+   "time": "2026-11-09T03:47:47+10:00",
+   "text": "Done: Take pistol out of pocket"
+  },
+  {
+   "time": "2026-11-09T03:47:47+10:00",
+   "text": "Done: Extra: punch combo"
+  },
+  {
+   "time": "2026-11-09T03:47:47+10:00",
+   "text": "Done: Extra: crouch"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Getting shot (hit reaction + ragdoll)"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Fall over (ragdoll physics)"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Backflip"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Jump"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Idle (breathing, weight shift)"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Run"
+  },
+  {
+   "time": "2026-11-09T03:47:46+10:00",
+   "text": "Done: Walk"
+  },
   {
    "time": "2026-11-09T03:26:14+10:00",
    "text": "Done: Teeth + mouth interior. 28 teeth, gums and tongue sculpted as SDFs; oral cavity carved behind the lips with mucosa shading; the lower set rides the jaw, which opens in the hit reaction"
