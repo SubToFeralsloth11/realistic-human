@@ -78,28 +78,24 @@ def interp_pose(t, keys):
     return M(R, pos)
 
 
+GUN_REAR = 0.073          # pistol root origin to the back of the slide along -Y (muzzle is +Y)
+
+
 def load_pocket(root):
-    """Right pocket bag centre + gun orientation inside it (body/rest coordinates)."""
-    path = os.path.join(root, "build", "pocket.json")
-    centre = np.array([-0.125, -0.070, 0.865])
-    opening = np.array([-0.135, -0.085, 0.935])
-    if os.path.exists(path):
-        d = json.load(open(path))
-        c = d.get("bag_centre") or d.get("bag_center") or d.get("bag_interior_centre") or d.get("bag_interior_center")
-        o = d.get("opening_centre") or d.get("opening_center")
-        if isinstance(c, dict):
-            c = c.get("body") or c.get("world")
-        if isinstance(o, dict):
-            o = o.get("body") or o.get("world")
-        if c is not None:
-            centre = np.array(c, float)
-        if o is not None:
-            opening = np.array(o, float)
-    # muzzle down, slide towards the front of the thigh, gun's right side outwards
-    Y = np.array([0.0, 0.0, -1.0])
-    Z = np.array([0.0, -1.0, 0.0])
-    X = np.cross(Y, Z)
-    return centre + np.array([0.0, 0.0, LIFT]), opening + np.array([0.0, 0.0, LIFT]), np.stack([X, Y, Z], 1)
+    """Gun transform inside the right front pocket (rest coordinates, sole lift included) and the
+    pocket opening. build/pocket.json comes from src/build_clothes.py."""
+    d = json.load(open(os.path.join(root, "build", "pocket.json")))
+    opening = np.array(d["opening_centre"], float)
+    depth = nrm(np.array(d["depth_dir"], float))
+    out = np.array(d["outward_normal"], float)
+    # muzzle down the bag, flat of the gun against the thigh (its right side faces out),
+    # the back of the slide 15 mm below the pocket mouth so only the grip is in reach
+    Y = depth
+    X = nrm(out - Y * np.dot(out, Y))
+    Z = np.cross(X, Y)
+    origin = opening + depth * (GUN_REAR + 0.015)
+    lift = np.array([0.0, 0.0, LIFT])
+    return origin + lift, opening + lift, np.stack([X, Y, Z], 1)
 
 
 def bone_M(W, H, b):
