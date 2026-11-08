@@ -90,6 +90,15 @@ def key_object(ob, frames, mats, name=None, visible=None):
     return cb
 
 
+def key_channels(ob, frames, channels, constant=False, name=None):
+    """channels: {(data_path, index): per-frame values} keyed on one action for the object."""
+    cb = _channelbag(ob, name or ob.name + "_anim")
+    frames = np.asarray(frames, np.float32)
+    for (path, index), values in channels.items():
+        _fcurve(cb, path, index, frames, np.asarray(values, np.float32), constant=constant)
+    return cb
+
+
 # ------------------------------------------------------------------ stage
 def outdoor_stage(sun_elev=24.0, sun_az=215.0, strength=1.0):
     scene = bpy.context.scene
