@@ -71,6 +71,7 @@ python3 src/build_hair.py build/human.npz  # hair strands                     ->
 python3 src/build_teeth.py                 # teeth, gums, tongue              -> build/teeth_*.npz
 python3 src/build_clothes.py               # t-shirt, jeans, sneakers         -> build/{shirt,jeans,shoes}.npz, pocket.json
 tools/render_all.sh                        # every clip to renders/clips + web copies in docs/media/clips
+python3 -m unittest discover tests         # IK, ragdoll and anatomy regression tests (~40 s, no Blender)
 ```
 
 Blender scripts (run with `blender -b --factory-startup --python <script> -- <args>`; on this
