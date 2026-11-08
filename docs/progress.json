@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-08T22:15:31+10:00",
+ "updated": "2026-11-08T22:29:13+10:00",
  "now": "Rendering the pistol routine and nine clips (EEVEE 720p), then Cycles hero stills",
  "phases": [
   {
@@ -115,7 +115,10 @@
     {
      "id": "shirt",
      "name": "T-shirt",
-     "status": "todo"
+     "status": "todo",
+     "media": [
+      "media/shirt_fit_fix.jpg"
+     ]
     },
     {
      "id": "jeans",
@@ -281,6 +284,13 @@
  },
  "gallery": [
   {
+   "src": "media/shirt_fit_fix.jpg",
+   "caption": "Shirt fit fix: the torso drape now lets the side seams follow the flanks, so hanging arms stay outside the shirt",
+   "time": "2026-11-08T22:29:13+10:00",
+   "type": "image",
+   "item": "shirt"
+  },
+  {
    "src": "media/anim_proof_dressed.jpg",
    "caption": "Dressed proofs of every clip: walk, run, jump, backflip, fall, shot, crouch, punch, idle",
    "time": "2026-11-08T22:15:31+10:00",
@@ -387,6 +397,10 @@
   }
  ],
  "log": [
+  {
+   "time": "2026-11-08T22:29:13+10:00",
+   "text": "Found and fixed a tented t-shirt (a uniform drape slope carried the shoulder width down to the hem). Garments are decimated for the EEVEE previews (memory was swapping), the shirt is relaxed and kept outside a skinned body proxy. All clips are rendering now."
+  },
   {
    "time": "2026-11-08T21:59:09+10:00",
    "text": "Final mesh rebuilt at 979k vertices with an oral cavity, teeth and a smooth wrist. Ragdoll reconstruction fixed so fallen hands and faces stay on (not in) the ground."
