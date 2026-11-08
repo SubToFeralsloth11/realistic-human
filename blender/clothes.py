@@ -347,7 +347,7 @@ FILES = {"Shirt": ("shirt.npz", jersey_material), "Jeans": ("jeans.npz", denim_m
          "Shoes": ("shoes.npz", sneaker_material)}
 
 
-def bind_to_rig(ob, rig, body, proxy=None):
+def bind_to_rig(ob, rig, body):
     """Parent to the armature and copy the body's skin weights (nearest face, interpolated)."""
     for vg in body.vertex_groups:
         if ob.vertex_groups.get(vg.name) is None:
@@ -369,9 +369,9 @@ def bind_to_rig(ob, rig, body, proxy=None):
     arm.object = rig
     arm.use_deform_preserve_volume = False
     # skinning shears the modelled folds where the shoulder bends hard (aiming): relax the shirt's
-    # deformation against its rest shape, then push out any single-layer cloth the posed body
-    # pokes through. The jeans are left alone: their pocket bags and fly are extra layers that a
-    # shrinkwrap would press onto the outer denim.
+    # deformation against its rest shape. No shrinkwrap: every garment is a thickened sheet (and
+    # the shoes have a lining), so pushing cloth out of the body drives inner layers through
+    # outer ones, which Cycles shows as speckle.
     if ob.name == "Shirt":
         cs = ob.modifiers.new("Relax", "CORRECTIVE_SMOOTH")
         cs.rest_source = "ORCO"
@@ -379,12 +379,6 @@ def bind_to_rig(ob, rig, body, proxy=None):
         cs.factor = 0.5
         cs.iterations = 6
         cs.use_only_smooth = False
-    if ob.name in ("Shirt", "Shoes"):
-        sw = ob.modifiers.new("KeepOutside", "SHRINKWRAP")
-        sw.target = proxy or body
-        sw.wrap_method = "NEAREST_SURFACEPOINT"
-        sw.wrap_mode = "OUTSIDE_SURFACE"
-        sw.offset = 0.0015
 
 
 def decimate(ob, ratio):
@@ -400,31 +394,9 @@ def decimate(ob, ratio):
         bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
-def collision_proxy(body, ratio=0.12):
-    """Skinned low-res copy of the body for the garments' shrinkwrap: a 1M-vertex target means a
-    1M-vertex BVH rebuilt every frame. Never seen by camera or rays; a bounding box in the viewport."""
-    proxy = body.copy()
-    proxy.data = body.data.copy()
-    proxy.name = "BodyCollisionProxy"
-    bpy.context.scene.collection.objects.link(proxy)
-    mod = proxy.modifiers.new("Decimate", "DECIMATE")
-    mod.decimate_type = "COLLAPSE"
-    mod.ratio = ratio
-    with bpy.context.temp_override(object=proxy, active_object=proxy, selected_objects=[proxy]):
-        bpy.ops.object.modifier_move_to_index(modifier=mod.name, index=0)
-        bpy.ops.object.modifier_apply(modifier=mod.name)
-    for attr in ("visible_camera", "visible_shadow", "visible_diffuse", "visible_glossy",
-                 "visible_transmission", "visible_volume_scatter"):
-        setattr(proxy, attr, False)
-    proxy.display_type = "BOUNDS"
-    proxy.hide_select = True
-    return proxy
-
-
 def load_clothes(rig=None, body=None, ratio=None):
     """ratio: optional decimation ratio (float, or {garment name: float})."""
     objs = {}
-    proxy = collision_proxy(body) if rig is not None and body is not None else None
     for name, (fname, matfn) in FILES.items():
         path = os.path.join(C.BUILD, fname)
         if not os.path.exists(path):
@@ -433,8 +405,8 @@ def load_clothes(rig=None, body=None, ratio=None):
         ob = C.load_npz_mesh(path, name)
         decimate(ob, ratio.get(name) if isinstance(ratio, dict) else ratio)
         ob.data.materials.append(matfn())
-        if proxy is not None:
-            bind_to_rig(ob, rig, body, proxy)
+        if rig is not None and body is not None:
+            bind_to_rig(ob, rig, body)
         objs[name] = ob
     return objs
 
