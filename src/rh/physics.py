@@ -697,7 +697,8 @@ class Sim:
             if out:
                 e = qlog(qmul(j.set_angles(f2, a2, t2), qconj(C.q)))
                 rot_constraint(P, C, e)
-        for key, (A, Bb, off, qr, alpha) in self.welds.items():
+        # soft welds first, rigid ones last so a rigid grip is what holds at the end of the pass
+        for A, Bb, off, qr, alpha in sorted(self.welds.values(), key=lambda w: -w[4]):
             point_constraint(A, off, Bb, (0.0, 0.0, 0.0), alpha / h2)
             e = qlog(qmul(qmul(A.q, qr), qconj(Bb.q)))
             rot_constraint(A, Bb, e, alpha / h2)
@@ -711,6 +712,12 @@ class Sim:
                 n = vmul(d, 1.0 / c)
                 lam = c / (b.winv(rw, n) + alpha / h2)
                 b.push(rw, vmul(n, lam))
+        if self.welds or self.pins:
+            # welds and pins pull on the limbs from outside: close the sockets again so the
+            # skeleton (read back by FK) does not stretch at the wrists and shoulders
+            for j in self.joints:
+                if not (j.P.kin and j.C.kin):
+                    point_constraint(j.P, j.ap, j.C, j.ac)
         contacts = self._ground(allb, h2) if self.contacts_on else []
         if self.collide:
             self._self_collide()
@@ -876,7 +883,10 @@ class Sim:
         if min(H2["hand_l"][2], H2["hand_r"][2]) < 0.25:
             clamp_fingers(s, W2, H2)                # updates W2, H2 in place
         quats, loc = s.basis(W2, root_loc)
-        return Frame(quats, loc, W2, H2, dict(extra or {}))
+        ex = dict(extra or {})
+        if self.extra:
+            ex["props"] = {p.name: (p.x, p.q) for p in self.extra}
+        return Frame(quats, loc, W2, H2, ex)
 
 
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
