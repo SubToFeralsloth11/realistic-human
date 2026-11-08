@@ -394,6 +394,33 @@ def decimate(ob, ratio):
         bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
+def hide_covered_skin(body, shoes, reach=0.03, top=0.14):
+    """Mask out the foot skin the shoes cover (a ray along the skin normal meets the shoe within
+    `reach`), so ankle bones and toes cannot show through the uppers once the feet deform."""
+    import numpy as np
+    from mathutils.bvhtree import BVHTree
+    sm = shoes.data
+    bvh = BVHTree.FromPolygons([v.co.copy() for v in sm.vertices], [tuple(p.vertices) for p in sm.polygons])
+    me = body.data
+    n = len(me.vertices)
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    nr = np.empty(n * 3, np.float32)
+    me.vertex_normals.foreach_get("vector", nr)
+    nr = nr.reshape(-1, 3)
+    covered = [int(i) for i in np.where(co[:, 2] < top)[0]
+               if bvh.ray_cast(Vector(co[i].tolist()), Vector(nr[i].tolist()), reach)[0] is not None]
+    vg = body.vertex_groups.new(name="covered_by_shoes")
+    vg.add(covered, 1.0, "REPLACE")
+    mask = body.modifiers.new("HideUnderShoes", "MASK")
+    mask.vertex_group = vg.name
+    mask.invert_vertex_group = True
+    with bpy.context.temp_override(object=body, active_object=body):
+        bpy.ops.object.modifier_move_to_index(modifier=mask.name, index=0)
+    print("skin hidden under shoes:", len(covered), "vertices")
+
+
 def load_clothes(rig=None, body=None, ratio=None):
     """ratio: optional decimation ratio (float, or {garment name: float})."""
     objs = {}
@@ -408,6 +435,8 @@ def load_clothes(rig=None, body=None, ratio=None):
         if rig is not None and body is not None:
             bind_to_rig(ob, rig, body)
         objs[name] = ob
+    if body is not None and "Shoes" in objs:
+        hide_covered_skin(body, objs["Shoes"])
     return objs
 
 
