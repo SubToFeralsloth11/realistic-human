@@ -88,8 +88,33 @@ def main():
         garments = clothes.load_clothes(rig=rig, body=body)
     except Exception as ex:
         print("no clothes:", ex)
-    parts = pistol.build_pistol()
     skel = Skeleton(os.path.join(C.BUILD, "rig.json"))
+    n, data = setup_pistol_scene(rig, skel, garments)
+    fr = np.arange(1, n + 1)
+    offset = (1.55, -2.75, 0.12)
+    anim.outdoor_stage(sun_elev=34.0, sun_az=anim.key_light_azimuth(offset), strength=0.85)
+    targets = [f.extra["cam"] for f in data]
+    anim.follow_camera("Cam", fr, targets, offset, lens=40, smooth=40)
+    anim.setup_eevee(res=res, samples=int(opt(a, "--samples", "48")))
+    if "--stills" in a:
+        for k in [int(x) for x in opt(a, "--stills", "1").split(",")]:
+            bpy.context.scene.frame_set(k)
+            C.render(os.path.join(out_dir, f"pistol_{k:03d}.png"))
+        return
+    full = os.path.join(out_dir, "pistol_full.mp4")
+    anim.render_mp4(full, 1, n)
+    for name, (t0, t1) in gunplay.SEGMENTS.items():
+        seg = os.path.join(out_dir, f"pistol_{name}.mp4")
+        subprocess.run(["/opt/homebrew/bin/ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t0:.2f}", "-to", f"{t1:.2f}",
+                        "-i", full, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", seg],
+                       check=True)
+        print("MP4", seg)
+
+
+def setup_pistol_scene(rig, skel, garments):
+    """Build the pistol and key the rig, gun, mechanisms, flash, magazines, casings and the
+    pocket bulge for the whole routine. Returns (frame count, frame data)."""
+    parts = pistol.build_pistol()
     data = gunplay.pistol_sequence(skel, C.ROOT)
     n = len(data)
     fr = np.arange(1, n + 1)
@@ -140,24 +165,8 @@ def main():
             vis.append(m is not None)
             mats.append(Matrix(m.tolist()) if m is not None else Matrix.Identity(4))
         anim.key_object(c, fr, mats, name=f"casing{k}", visible=vis)
-    offset = (1.55, -2.75, 0.12)
-    anim.outdoor_stage(sun_elev=34.0, sun_az=anim.key_light_azimuth(offset), strength=0.85)
-    targets = [f.extra["cam"] for f in data]
-    anim.follow_camera("Cam", fr, targets, offset, lens=40, smooth=40)
-    anim.setup_eevee(res=res, samples=int(opt(a, "--samples", "48")))
-    if "--stills" in a:
-        for k in [int(x) for x in opt(a, "--stills", "1").split(",")]:
-            bpy.context.scene.frame_set(k)
-            C.render(os.path.join(out_dir, f"pistol_{k:03d}.png"))
-        return
-    full = os.path.join(out_dir, "pistol_full.mp4")
-    anim.render_mp4(full, 1, n)
-    for name, (t0, t1) in gunplay.SEGMENTS.items():
-        seg = os.path.join(out_dir, f"pistol_{name}.mp4")
-        subprocess.run(["/opt/homebrew/bin/ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t0:.2f}", "-to", f"{t1:.2f}",
-                        "-i", full, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", seg],
-                       check=True)
-        print("MP4", seg)
+    return n, data
 
 
-main()
+if __name__ == "__main__":
+    main()
