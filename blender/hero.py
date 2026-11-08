@@ -61,8 +61,17 @@ def studio(target):
     C.world_color((0.012, 0.012, 0.014), 1.0)
 
 
-def pose_rig(rig, frame):
-    anim.key_rig(rig, [1], [frame.quats], [frame.root_loc], name="hero_pose")
+def pose_rig(rig, frame, lid_drop=8.0):
+    """Key one pose. The upper lids come down `lid_drop` degrees (about their local X, the closing
+    axis) so they cover the top 1-2 mm of the iris like relaxed lids do; fully open lids stare."""
+    quats = dict(frame.quats)
+    c, s = math.cos(math.radians(-lid_drop) / 2), math.sin(math.radians(-lid_drop) / 2)
+    for side in ("l", "r"):
+        b = f"lid_upper_{side}"
+        if b in quats:
+            w, x, y, z = quats[b]
+            quats[b] = (w * c - x * s, w * s + x * c, y * c + z * s, z * c - y * s)
+    anim.key_rig(rig, [1], [quats], [frame.root_loc], name="hero_pose")
     bpy.context.scene.frame_set(1)
 
 
@@ -121,8 +130,8 @@ def main():
             cam.data.lens = 135
             C.orbit_camera(cam, (0.0, -0.075, 1.683), 0.42, 12, 2)
             cam.data.dof.use_dof = True
-            cam.data.dof.aperture_fstop = 5.6
-            cam.data.dof.focus_distance = (cam.location - rig.matrix_world @ rig.pose.bones["eye_l"].head).length
+            cam.data.dof.aperture_fstop = 11.0                    # f/5.6 left ~2 mm in focus at 42 cm
+            cam.data.dof.focus_distance = (cam.location - rig.matrix_world @ rig.pose.bones["eye_l"].head).length - 0.010
         elif shot == "aim":
             scene.render.resolution_x, scene.render.resolution_y = 1600, 1000
             cam.data.lens = 50
