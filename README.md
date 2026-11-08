@@ -4,7 +4,11 @@ A realistic adult man sculpted, shaded, groomed, dressed, rigged and animated en
 (Python + Blender 5.1). Nothing is downloaded: no scans, no MakeHuman/MetaHuman, no textures,
 no HDRIs, no motion capture. Every surface and every motion comes from the scripts in this repo.
 
-Progress site with previews: https://subtoferalsloth11.github.io/realistic-human/
+Progress site with previews and every animation: https://subtoferalsloth11.github.io/realistic-human/
+
+**Download the finished character:** [`realistic_human.blend`](https://github.com/SubToFeralsloth11/realistic-human/releases/tag/v1.0)
+(Blender 5.1, 206 MB: body, eyes, teeth, hair, clothes, pistol, rig, and every clip as an action;
+select `Rig` and pick an action in the Action editor).
 
 ## How it is made
 
