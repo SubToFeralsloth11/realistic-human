@@ -169,11 +169,14 @@ def mouth_carves():
     xs = np.linspace(-0.0250, 0.0250, 13)
     z = -0.0716 - 0.0004 * (np.abs(xs) / 0.025)
     slit = []
-    for depth in (0.0, 0.0028, 0.0056):
+    for depth in (0.0, 0.0028, 0.0056, 0.0084, 0.0112):
         sx = xs * (1 - depth * 6)
         pts = np.stack([sx, _arch(-0.0365 + depth, 26.0, sx), z], 1) + O
         slit.append(Tube(pts, 0.00045, samples=3))
-    return [(Union(slit), 0.0004)]
+    # oral vestibule and mouth cavity behind the lip seal (holds the teeth; visible when the jaw opens)
+    cavity = Union([Ellipsoid(hp(0, -0.0150, -0.0716), (0.0245, 0.0105, 0.0105), tag="mouth"),
+                    Ellipsoid(hp(0, 0.0040, -0.0716), (0.0230, 0.0180, 0.0120), tag="mouth")], k=0.006)
+    return [(Union(slit), 0.0004), (cavity, 0.0015)]
 
 
 # ------------------------------------------------------------------ eyes

@@ -89,6 +89,9 @@ def compute(verts, prog):
     nail_leaves = [l for l in prog.leaves() if l.tag == "nail"]
     nail = (1 - smoothstep(0.0002, 0.0007, group_distance(nail_leaves, verts.astype(F)))) if nail_leaves else 0
     m["m_nail"] = np.asarray(nail, F) * np.ones(len(verts), F)
+    mouth_leaves = [l for l in prog.leaves() if l.tag == "mouth"]
+    mouth = (1 - smoothstep(0.0003, 0.0025, group_distance(mouth_leaves, verts.astype(F)))) if mouth_leaves else 0
+    m["m_mouth"] = (np.asarray(mouth, F) * np.ones(len(verts), F)).astype(F)
     m["m_red"] = np.clip(0.8 * nose + 0.7 * cheeks + 0.45 * ear, 0, 1).astype(F)
     # eyelids: skin within 5 mm of either globe, outside the visible eyeball
     lid = np.zeros(len(verts), F)

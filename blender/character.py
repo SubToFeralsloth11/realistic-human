@@ -17,6 +17,7 @@ from mathutils import Vector  # noqa: E402
 import common as C  # noqa: E402
 import eye  # noqa: E402
 import skin  # noqa: E402
+import teeth  # noqa: E402
 
 
 def build_armature(rig, name="Rig"):
@@ -101,6 +102,7 @@ def build_character(npz=None, with_eyes=True, material=True):
                 ob.parent_bone = key
                 ob.matrix_world = mw
             eyes += parts
+    teeth.load_teeth(rig_ob)
     return rig_ob, body, eyes
 
 

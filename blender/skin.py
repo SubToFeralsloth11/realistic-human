@@ -103,6 +103,8 @@ def skin_material(name="Skin", base=SKIN_BASE):
     col = g.mix(g.math("MULTIPLY", palm, 0.6), col, (base[0] * 1.02, base[1] * 0.86, base[2] * 0.80))
     nail = g.attr("m_nail", (-600, -700))
     col = g.mix(nail, col, (0.62, 0.42, 0.38))
+    mouth = g.attr("m_mouth", (-600, -800))
+    col = g.mix(mouth, col, (0.22, 0.045, 0.045))          # oral mucosa: dark wet red
     g.link(col, bsdf.inputs["Base Color"])
 
     # ---------------- subsurface
