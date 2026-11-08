@@ -52,6 +52,7 @@ MAG_LEN = T0                                 # magazine body length below its or
 TRIGGER_PIVOT = Vector((0.0, 84.0, -7.0))
 BARREL_PIVOT = Vector((0.0, 125.0, BORE_Z))
 GUIDE_Z = 4.6
+FW = 10.8                                    # half width of the frame's upper section (slide is 11)
 
 
 def gp(s, t):
@@ -67,9 +68,9 @@ def t_at(s, z):
 SOCKET = GRIP_O + t_at(0.0, -25.0) * UAX     # palm centre: on the grip axis, 25 mm below the slide
 
 
-def hw_grip(t):
-    """Half width of the grip at height t along the grip axis."""
-    return float(np.interp(t, [-4, 0, 10, 40, 55, 62, 67, 95], [12.3, 12.4, 12.9, 13.0, 12.6, 11.6, 10.4, 10.0]))
+def hw_grip(z):
+    """Half width of the grip at gun-space height z (narrows to the upper frame just under the slide)."""
+    return float(np.interp(z, [-90, -62, -30, -17, -13.5, -10.5, 10], [12.3, 12.9, 13.0, 12.9, 12.4, 10.7, 10.5]))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -103,7 +104,7 @@ def dedup(pts, eps=1e-4):
     return out
 
 
-def fillet(pts, step_deg=7.5):
+def fillet(pts, step_deg=5.0):
     """Closed polygon of (a, b[, r]) -> polygon with each corner rounded by radius r."""
     P = [np.array(p[:2], float) for p in pts]
     R = [p[2] if len(p) > 2 else 0.0 for p in pts]
@@ -455,7 +456,7 @@ def mat_metal(name, base, rough, wear_col=None, wear_amt=0.0, brushed=0.0, metal
     return m
 
 
-def mat_polymer(name, base=(0.016, 0.016, 0.018), rough=0.55, stipple=False):
+def mat_polymer(name, base=(0.021, 0.021, 0.023), rough=0.5, stipple=False):
     m, nt, p = _new_mat(name)
     p.inputs["Specular IOR Level"].default_value = 0.45
     co = _objco(nt)
@@ -474,8 +475,12 @@ def mat_polymer(name, base=(0.016, 0.016, 0.018), rough=0.55, stipple=False):
 
         t = axis_coord(UAX, (SOCKET - GRIP_O).dot(UAX))
         s = axis_coord(FAX, (SOCKET - GRIP_O).dot(FAX))
-        mask = _math(nt, "MULTIPLY", _smooth(nt, t, 6.0, 6.5), _math(nt, "SUBTRACT", 1.0, _smooth(nt, t, 56.5, 57.0)))
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(co, sep.inputs[0])
+        zg = _math(nt, "MULTIPLY_ADD", sep.outputs["Z"], 1000.0, SOCKET.z)
+        mask = _math(nt, "MULTIPLY", _smooth(nt, t, 6.0, 6.5), _math(nt, "SUBTRACT", 1.0, _smooth(nt, zg, -16.6, -16.1)))
         mask = _math(nt, "MULTIPLY", mask, _math(nt, "SUBTRACT", 1.0, _smooth(nt, s, 22.4, 22.9)))
+        mask = _math(nt, "MULTIPLY", mask, _smooth(nt, s, -24.6, -24.1))
         vor = nt.nodes.new("ShaderNodeTexVoronoi")
         _in(nt, vor.inputs["Vector"], co)
         vor.inputs["Scale"].default_value = 1500.0
@@ -515,8 +520,12 @@ def mat_flash(name, length_m=0.045):
     d = _math(nt, "DIVIDE", _sock(ln.outputs, "Value"), length_m, clamp=True)
     inv = _math(nt, "SUBTRACT", 1.0, d, clamp=True)
     fall = _math(nt, "POWER", inv, 2.2)
-    n = _noise(nt, co, 260.0, 6.0, 0.62)
-    alpha = _math(nt, "MULTIPLY", fall, _math(nt, "MULTIPLY_ADD", n, 1.6, -0.15), clamp=True)
+    n = _noise(nt, co, 180.0, 8.0, 0.65)
+    lw = nt.nodes.new("ShaderNodeLayerWeight")
+    lw.inputs["Blend"].default_value = 0.5
+    soft = _math(nt, "POWER", _math(nt, "SUBTRACT", 1.0, lw.outputs["Facing"], clamp=True), 2.5)
+    alpha = _math(nt, "MULTIPLY", fall, _math(nt, "MULTIPLY_ADD", n, 1.5, -0.45), clamp=True)
+    alpha = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", alpha, soft), 0.75, clamp=True)
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     _in(nt, ramp.inputs[0], d)
     els = ramp.color_ramp.elements
@@ -528,7 +537,7 @@ def mat_flash(name, length_m=0.045):
     e.color = (1.0, 0.40, 0.07, 1)
     em = nt.nodes.new("ShaderNodeEmission")
     nt.links.new(ramp.outputs["Color"], em.inputs["Color"])
-    _in(nt, em.inputs["Strength"], _math(nt, "MULTIPLY", fall, 90.0))
+    _in(nt, em.inputs["Strength"], _math(nt, "MULTIPLY_ADD", fall, 30.0, 2.0))
     tr = nt.nodes.new("ShaderNodeBsdfTransparent")
     mix = nt.nodes.new("ShaderNodeMixShader")
     _in(nt, mix.inputs[0], alpha)
@@ -546,17 +555,17 @@ def mat_flash(name, length_m=0.045):
 
 def make_materials():
     return {
-        "slide": mat_metal("Pistol_SlideNitride", (0.055, 0.056, 0.06), 0.34, (0.42, 0.42, 0.43), 0.9,
+        "slide": mat_metal("Pistol_SlideNitride", (0.11, 0.11, 0.118), 0.32, (0.55, 0.55, 0.56), 0.9,
                            brushed=0.07),
-        "barrel": mat_metal("Pistol_BarrelNitride", (0.075, 0.073, 0.072), 0.46, (0.45, 0.44, 0.42), 0.8,
+        "barrel": mat_metal("Pistol_BarrelNitride", (0.16, 0.155, 0.15), 0.42, (0.45, 0.44, 0.42), 0.8,
                             brushed=0.05),
-        "steel": mat_metal("Pistol_Steel", (0.10, 0.10, 0.105), 0.38, (0.5, 0.5, 0.5), 0.6),
-        "sight": mat_metal("Pistol_SightSteel", (0.03, 0.03, 0.032), 0.48, (0.3, 0.3, 0.3), 0.4, metallic=0.7),
+        "steel": mat_metal("Pistol_Steel", (0.22, 0.22, 0.23), 0.36, (0.5, 0.5, 0.5), 0.6),
+        "sight": mat_metal("Pistol_SightSteel", (0.08, 0.08, 0.085), 0.45, (0.4, 0.4, 0.4), 0.5),
         "dot": mat_plain("Pistol_SightDot", (0.86, 0.86, 0.82), 0.35),
         "frame": mat_polymer("Pistol_FramePolymer", stipple=True),
         "polymer": mat_polymer("Pistol_Polymer", rough=0.5),
         "follower": mat_polymer("Pistol_Follower", base=(0.05, 0.05, 0.055), rough=0.45),
-        "mag": mat_metal("Pistol_MagSteel", (0.028, 0.028, 0.03), 0.42, (0.35, 0.35, 0.36), 0.7, metallic=0.85),
+        "mag": mat_metal("Pistol_MagSteel", (0.05, 0.05, 0.055), 0.4, (0.45, 0.45, 0.46), 0.8, metallic=0.6),
         "brass": mat_metal("Pistol_Brass", (0.80, 0.56, 0.20), 0.24, blotch=0.06),
         "primer": mat_metal("Pistol_Primer", (0.72, 0.64, 0.50), 0.3, blotch=0.05),
         "copper": mat_metal("Pistol_Copper", (0.86, 0.40, 0.25), 0.27, blotch=0.06),
@@ -576,18 +585,17 @@ def add_mat(obj, mat):
 # ---------------------------------------------------------------------------------------------
 # Parts (all built in gun-space mm unless noted)
 # ---------------------------------------------------------------------------------------------
-def grip_loft(name, off=0.0, t_range=(-4.0, 95.0), n=112, e=2.2, b=25.0):
+def grip_loft(name, off=0.0, t_range=(-4.0, 95.0), n=160, e=2.2, b=25.0):
     rings = []
-    for t in np.linspace(t_range[0], t_range[1], 44):
-        a = hw_grip(t) + off
+    for t in np.linspace(t_range[0], t_range[1], 70):
         bb = b + off
         ring = []
         for k in range(n):
             th = 2 * math.pi * k / n
             c, s = math.cos(th), math.sin(th)
-            x = a * math.copysign(abs(c) ** (2 / e), c)
             sv = bb * math.copysign(abs(s) ** (2 / e), s)
             p = GRIP_O + sv * FAX + float(t) * UAX
+            x = (hw_grip(p.z) + off) * math.copysign(abs(c) ** (2 / e), c)
             ring.append((x, p.y, p.z))
         rings.append(ring)
     return loft(name, rings)
@@ -611,7 +619,7 @@ def tang_rounding(side):
     for y in np.linspace(-6.0, 19.0, 26):
         zb = float(np.interp(y, ys, zs))
         r = float(np.interp(y, [-6.0, 9.0, 19.0], [5.5, 5.5, 0.6]))
-        xc, zc = 10.3 - r, zb + r
+        xc, zc = FW - r, zb + r
         ring = [(12.5, zc + 0.3), (12.5, zb - 3.0), (xc - 0.3, zb - 3.0), (xc - 0.3, zb - 0.02)]
         for k in range(13):
             a = -math.pi / 2 + (math.pi / 2) * k / 12
@@ -630,7 +638,7 @@ def build_frame(M):
         (19.0, -12.6, 6.0), (11.5, -9.4, 8.0), (3.0, -7.8, 4.0), (-2.4, -6.4, 2.0), (-3.4, -3.2, 1.0),
     ]
     frame = prism("frame", fillet(sil), "X", -14.0, 14.0)
-    upper = box("f_upper", -10.3, 10.3, -12.0, 162.0, -11.8, 3.0)
+    upper = box("f_upper", -FW, FW, -12.0, 162.0, -11.8, 3.0)
     guard = box("f_guard", -4.9, 4.9, 58.0, 112.0, -40.0, -10.0)
     grip = grip_loft("f_grip")
     boolean(upper, guard, "UNION")
@@ -652,13 +660,17 @@ def build_frame(M):
     cutters.append(loft("c_magwell", rings))
     cutters.append(box("c_lugpocket", -6.2, 6.2, 72.0, 101.5, -6.0, 3.0))
     cutters.append(box("c_trigslot", -3.7, 3.7, 80.0, 90.5, -14.0, -3.5))
-    cutters.append(box("c_takedown", -11.0, 11.0, 88.0, 94.5, -5.6, -2.0))
+    cutters.append(box("c_takedown", -FW - 0.7, FW + 0.7, 88.0, 94.5, -5.6, -2.0))
     # slide stop recess (left side)
-    cutters.append(box("c_ss_bar", -11.5, -9.75, 57.6, 84.0, -4.8, -0.8))
-    cutters.append(box("c_ss_pad", -11.5, -9.75, 57.6, 64.0, -7.0, -0.8))
-    cutters.append(at(x_axis(cyl("c_ss_hub", 3.1, -11.5, -9.75)), 0, TRIGGER_PIVOT.y, TRIGGER_PIVOT.z))
+    cutters.append(box("c_ss_bar", -FW - 1.2, -FW + 0.55, 57.6, 84.0, -4.0, -0.8))
+    cutters.append(box("c_ss_pad", -FW - 1.2, -FW + 0.55, 57.6, 64.0, -6.6, -0.8))
+    cutters.append(at(x_axis(cyl("c_ss_hub", 3.1, -FW - 1.2, -FW + 0.55)), 0, TRIGGER_PIVOT.y, TRIGGER_PIVOT.z))
     # magazine release recess following the grip surface (left side)
     outline, _ = magrelease_outline(0.4)
+    for sx in (1, -1):
+        corner = [(12.5, -6.0), (12.5, 1.8)] + [(FW - 5.0 + 5.0 * math.cos(a), 1.8 + 5.0 * math.sin(a))
+                                                 for a in np.linspace(0, -math.pi / 2, 13)] + [(FW - 5.0, -6.0)]
+        cutters.append(prism("c_tangtop", [(sx * x, y) for x, y in corner], "Z", -20.0, 5.0))
     cutters.append(tang_rounding(1))
     cutters.append(tang_rounding(-1))
     rec = prism("c_magrel", outline, "X", -20.0, 0.0)
@@ -675,12 +687,12 @@ def build_frame(M):
             r = box("rail", min(sx * 4.9, sx * 8.3), max(sx * 4.9, sx * 8.3), y0, y1, -0.6, 2.4)
             steel.append(finish(r, M["steel"], 0.2, 2))
     for y, z in ((TRIGGER_PIVOT.y, TRIGGER_PIVOT.z), (100.5, -6.0), (13.0, -5.5)):
-        pin = lathe("pin", [(0, -10.45), (1.15, -10.45), (1.5, -10.15), (1.5, 10.15), (1.15, 10.45), (0, 10.45)], 32)
+        pin = lathe("pin", [(0, -FW - 0.15), (1.15, -FW - 0.15), (1.5, -FW + 0.15), (1.5, FW - 0.15), (1.15, FW + 0.15), (0, FW + 0.15)], 32)
         steel.append(finish(at(x_axis(pin), 0, y, z), M["steel"], 0.0))
-    td = box("takedown", -10.62, 10.62, 88.4, 94.1, -5.2, -2.4)
-    rid = [box("td_r", -10.8, 10.8, yy, yy + 0.6, -5.0, -2.6) for yy in (89.4, 91.0, 92.6)]
+    td = box("takedown", -FW - 0.32, FW + 0.32, 88.4, 94.1, -5.2, -2.4)
+    rid = [box("td_r", -FW - 0.5, FW + 0.5, yy, yy + 0.6, -5.0, -2.6) for yy in (89.4, 91.0, 92.6)]
     boolean(td, rid, "UNION")
-    steel.append(finish(td, M["steel"], 0.18, 2))
+    steel.append(finish(td, M["sight"], 0.18, 2))
     return join([frame] + steel, "Frame")
 
 
@@ -694,7 +706,8 @@ def build_slide(M):
     prof = fillet([(-11, 0, 0.35), (11, 0, 0.35), (11, 20.5, 1.8), (7.6, 27.0, 1.6), (-7.6, 27.0, 1.6),
                    (-11, 20.5, 1.8)])
     slide = prism("slide", prof, "Y", 0.0, SLIDE_LEN)
-    c = [box("c_chan", -8.8, 8.8, -1, 158, -1, 4.5),
+    c = [box("c_chan", -8.8, 8.8, 3.0, 150.5, -1, 4.5),
+         box("c_rslot_r", 4.7, 8.6, -1, 4, -1, 2.8), box("c_rslot_l", -8.6, -4.7, -1, 4, -1, 2.8),
          box("c_breech", -8.5, 8.5, 40.0, BREECH_Y, -1, 9.3),
          prism("c_cav", fillet([(-7.25, -1), (7.25, -1), (7.25, 21.6, 2.5), (-7.25, 21.6, 2.5)]), "Y",
                BREECH_Y, 150.5),
@@ -716,9 +729,9 @@ def build_slide(M):
             c.append(g)
     boolean(slide, c, "DIFFERENCE")
     clean(slide)
-    finish(slide, M["slide"], 0.35, 3)
+    finish(slide, M["slide"], 0.35, 4)
 
-    ext = prism("extractor", rrect(59.0, 71.2, 16.1, 20.1, 0.6), "X", 10.2, 11.2)
+    ext = prism("extractor", rrect(59.0, 71.2, 16.4, 20.0, 0.6), "X", 10.2, 11.06)
     finish(ext, M["steel"], 0.2, 2)
     plate = prism("rearplate", rrect(-4.3, 4.3, 8.3, 20.5, 1.0), "Y", 0.05, 0.4)
     boolean(plate, at(cyl("c_ind", 0.9, -1, 1), z=17.0), "DIFFERENCE")
@@ -746,7 +759,7 @@ def build_barrel(M):
 
     prof = [(4.98, BREECH_Y), (7.0, BREECH_Y), (7.0, 99.0), (6.3, 101.0), (6.3, 155.9), (5.85, 156.6),
             (5.05, 156.6), (4.52, 156.05), (4.5, 155.5), (4.5, 90.5), (4.98, 89.8)]
-    tube = at(lathe("barrel", prof, 96, rifling), z=BORE_Z)
+    tube = at(lathe("barrel", prof, 144, rifling), z=BORE_Z)
     hood = prism("hood", fillet([(-7.0, 12.0), (7.0, 12.0), (7.0, 26.4, 1.4), (-7.0, 26.4, 1.4)]), "Y",
                  BREECH_Y, 99.3)
     lug = prism("lug", fillet([(74.0, 9.5), (95.5, 9.5), (95.5, 5.5, 1.0), (90.5, 2.5, 1.5), (80.0, 2.5, 1.0),
@@ -784,11 +797,11 @@ def build_trigger(M):
 
 def build_slide_stop(M):
     poly = fillet([(58.0, -1.2, 0.8), (83.5, -1.2, 1.2), (86.4, -5.5, 2.0), (85.6, -9.0, 2.0), (82.4, -9.2, 2.0),
-                   (81.4, -6.0, 1.0), (80.0, -4.4, 0.8), (64.5, -4.4, 1.0), (63.2, -6.6, 1.2), (58.0, -6.4, 1.0)])
-    ss = prism("slidestop", poly, "X", -11.0, -9.8)
-    boolean(ss, [box("c_g", -11.5, -10.75, yy, yy + 0.5, -7.0, -1.8) for yy in (58.9, 60.3, 61.7)], "DIFFERENCE")
+                   (81.4, -6.0, 1.0), (80.0, -3.5, 0.8), (64.5, -3.5, 1.0), (63.2, -6.2, 1.2), (58.0, -6.0, 1.0)])
+    ss = prism("slidestop", poly, "X", -FW - 0.7, -FW + 0.5)
+    boolean(ss, [box("c_g", -FW - 1.2, -FW - 0.45, yy, yy + 0.5, -7.0, -1.8) for yy in (58.9, 60.3, 61.7)], "DIFFERENCE")
     clean(ss)
-    return finish(ss, M["steel"], 0.2, 2)
+    return finish(ss, M["sight"], 0.2, 2)
 
 
 def build_mag_release(M):
@@ -820,7 +833,7 @@ def _case(spent):
     p += [(2.05, 0.12), (2.18, 0.22), (2.3, 0.02), (4.55, 0.0), (4.98, 0.3), (4.98, 1.02), (4.8, 1.27),
           (4.42, 1.45), (4.42, 1.95), (4.965, 2.75), (4.83, CASE_L - 0.2), (4.76, CASE_L), (4.52, CASE_L),
           (4.47, CASE_L - 0.6), (4.47, 6.0), (3.0, 5.2), (0, 5.0)]
-    obj = lathe("case", p, 64)
+    obj = lathe("case", p, 96)
     me = obj.data
     me.materials.append(None)
     me.materials.append(None)
@@ -840,7 +853,7 @@ def _bullet():
             break
         p.append((r, y))
     p += [(0.7, OAL - 0.05), (0, OAL)]
-    return lathe("bullet", p, 64)
+    return lathe("bullet", p, 96)
 
 
 def _ammo_finish(obj, M, mats):
@@ -924,13 +937,14 @@ def build_flash(M):
     parts = [lathe("core", catmull([(0.01, -1.0), (4.5, 0.5), (7.5, 5.0), (7.0, 12.0), (4.5, 24.0), (1.5, 38.0),
                                     (0.01, 44.0)], 5, closed=False), 48)]
     rng = np.random.default_rng(7)
-    for k in range(6):
-        length = 22.0 + rng.uniform(-4, 6)
-        cone = lathe("petal", [(0.01, 0.0), (3.4, 2.5), (2.6, length * 0.45), (0.9, length * 0.85), (0.01, length)], 24)
-        xform(cone, Matrix.Diagonal((0.33, 1.0, 1.0, 1.0)))
-        xform(cone, Matrix.Rotation(math.radians(68 + rng.uniform(-8, 8)), 4, "X"))
-        xform(cone, Matrix.Rotation(math.radians(k * 60 + 15 + rng.uniform(-10, 10)), 4, "Y"))
-        at(cone, y=2.0)
+    for k in range(10):
+        length = 16.0 + rng.uniform(0, 14)
+        rad = 1.6 + rng.uniform(0, 1.0)
+        cone = lathe("petal", [(0.01, 0.0), (rad, 2.0), (rad * 0.7, length * 0.45), (rad * 0.25, length * 0.85),
+                               (0.01, length)], 24)
+        xform(cone, Matrix.Rotation(math.radians(60 + rng.uniform(-12, 14)), 4, "X"))
+        xform(cone, Matrix.Rotation(math.radians(k * 36 + rng.uniform(-12, 12)), 4, "Y"))
+        at(cone, y=1.5)
         parts.append(cone)
     fl = join(parts, "MuzzleFlash")
     fl.data.materials.append(M["flash"])
@@ -994,7 +1008,7 @@ def build_pistol(collection=None):
     _place(barrel, root, BARREL_PIVOT)
     _place(guide, root, (0.0, 0.0, GUIDE_Z), local=True)
     _place(trigger, root, TRIGGER_PIVOT)
-    _place(stop, root, (-10.4, TRIGGER_PIVOT.y, TRIGGER_PIVOT.z))
+    _place(stop, root, (-FW - 0.1, TRIGGER_PIVOT.y, TRIGGER_PIVOT.z))
     _place(release, root, rel_c)
     _place(mag, root, MAG_ORIGIN, rot_x=-RAKE, local=True)
     _place(casing, root, (0.0, BREECH_Y + CASE_L / 2, BORE_Z), local=True)
@@ -1030,21 +1044,26 @@ def build_pistol(collection=None):
 # ---------------------------------------------------------------------------------------------
 def _studio(C, target):
     t = Vector(target)
-    C.world_color((0.006, 0.0062, 0.007), 1.0)
-    bpy.ops.mesh.primitive_plane_add(size=4.0, location=(0, 0, 0))
+    C.world_color((0.004, 0.0042, 0.005), 1.0)
+    bpy.ops.mesh.primitive_plane_add(size=6.0, location=(0, 0, 0))
     floor = bpy.context.active_object
     floor.name = "Floor"
     fm, nt, p = _new_mat("Floor")
-    p.inputs["Base Color"].default_value = (0.022, 0.022, 0.024, 1)
-    p.inputs["Roughness"].default_value = 0.42
+    p.inputs["Base Color"].default_value = (0.008, 0.008, 0.009, 1)
+    p.inputs["Roughness"].default_value = 0.85
+    p.inputs["Specular IOR Level"].default_value = 0.15
     floor.data.materials.append(fm)
-    C.area_light("Key", t + Vector((-0.25, -0.35, 0.75)), t, 6.0, 0.7, (1.0, 0.97, 0.93))
-    s1 = C.area_light("StripR", t + Vector((0.55, 0.25, 0.25)), t, 3.0, 0.1, (0.93, 0.96, 1.0))
-    s1.data.shape, s1.data.size, s1.data.size_y = "RECTANGLE", 0.06, 0.9
-    s2 = C.area_light("StripL", t + Vector((-0.55, 0.3, 0.2)), t, 2.5, 0.1, (0.93, 0.96, 1.0))
-    s2.data.shape, s2.data.size, s2.data.size_y = "RECTANGLE", 0.06, 0.9
-    C.area_light("Top", t + Vector((0.05, 0.1, 0.9)), t, 2.0, 1.2, (1.0, 1.0, 1.0))
-    C.area_light("Fill", t + Vector((0.6, -0.6, 0.15)), t, 0.8, 0.8, (0.9, 0.93, 1.0))
+    warm, cool = (1.0, 0.96, 0.9), (0.9, 0.95, 1.0)
+    C.area_light("Top", t + Vector((0.0, 0.12, 0.65)), t, 5.0, 0.9, warm)
+    C.area_light("RightBox", t + Vector((0.5, 0.32, 0.06)), t, 1.2, 0.45, cool)
+    C.area_light("LeftBox", t + Vector((-0.5, 0.05, 0.48)), t, 1.3, 0.6, warm)
+    for lt in bpy.data.lights:
+        lt.spread = math.radians(100)
+    for name, off, pw in (("RimFront", (0.1, 0.65, 0.35), 2.0), ("RimLeft", (-0.4, 0.5, 0.3), 1.6),
+                          ("RimRear", (0.25, -0.6, 0.4), 1.2)):
+        s = C.area_light(name, t + Vector(off), t, pw, 0.1, cool)
+        s.data.shape, s.data.size, s.data.size_y = "RECTANGLE", 0.07, 0.8
+        s.visible_diffuse = False
 
 
 def _standalone():
@@ -1078,6 +1097,21 @@ def _standalone():
     C.render(f"{prefix}_34.png")
     C.orbit_camera(cam, center, 0.62, -90, 4)
     C.render(f"{prefix}_left.png")
+    if os.environ.get("PISTOL_DEBUG"):
+        sc.render.resolution_x, sc.render.resolution_y = 1000, 700
+        for tag, off, dist, yaw, pitch in (("port", (0, 0.04, 0.03), 0.22, 70, 25),
+                                           ("muzzle", (0, 0.09, 0.03), 0.25, 160, 10),
+                                           ("grip", (0, 0.0, -0.01), 0.3, -65, 10),
+                                           ("rear", (0, -0.03, 0.02), 0.25, -30, 20),
+                                           ("trigger", (0, 0.04, -0.01), 0.2, 135, -8)):
+            C.orbit_camera(cam, center + Vector(off), dist, yaw, pitch)
+            C.render(f"{prefix}_dbg_{tag}.png")
+        flash = parts["muzzle_flash"]
+        flash.hide_render = False
+        C.orbit_camera(cam, center + Vector((0, 0.1, 0.03)), 0.4, 95, 8)
+        C.render(f"{prefix}_dbg_flash.png")
+        flash.hide_render = True
+        sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
 
     # exploded: slide locked back, barrel tilted, magazine dropped, a spent case in flight
     parts["slide"].location.y -= 0.028
@@ -1085,20 +1119,16 @@ def _standalone():
     parts["barrel"].rotation_euler.x = math.radians(5)
     parts["slide_stop"].rotation_euler.x = math.radians(-6)
     mag = parts["magazine"]
-    mag.location -= (mag.matrix_basis.to_3x3() @ Vector((0, 0, 1))) * 0.058
+    mag.location -= (mag.matrix_basis.to_3x3() @ Vector((0, 0, 1))) * 0.088
+    root.location.z += 0.07
+    bpy.context.view_layer.update()
+    center.z += 0.07
     loose = parts["casing"].copy()
     bpy.context.scene.collection.objects.link(loose)
     loose.hide_render = loose.hide_viewport = False
     loose.location = Vector((0.032, 0.02, 0.05))
     loose.rotation_euler = (math.radians(35), math.radians(20), math.radians(60))
-    rnd = parts["cartridge"].copy()
-    bpy.context.scene.collection.objects.link(rnd)
-    rnd.hide_render = rnd.hide_viewport = False
-    rnd.parent = None
-    rnd.location = root.matrix_world @ ((Vector((26.0, 70.0, 0.0)) - SOCKET) * MM)
-    rnd.location.z = 0.00498
-    rnd.rotation_euler = (0.0, 0.0, math.radians(-30))
-    C.orbit_camera(cam, center + Vector((0, -0.01, -0.012)), 0.70, 70, 14)
+    C.orbit_camera(cam, center + Vector((0, -0.01, -0.04)), 0.86, 70, 14)
     C.render(f"{prefix}_exploded.png")
 
 
