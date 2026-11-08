@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-09T04:13:00+10:00",
+ "updated": "2026-11-09T04:14:04+10:00",
  "now": "Done: every animation, hero stills, turntable and the .blend (release v1.0) are up",
  "phases": [
   {
@@ -9,7 +9,8 @@
     {
      "id": "site",
      "name": "Repository + progress site",
-     "status": "active"
+     "status": "done",
+     "done": "2026-11-09T04:14:04+10:00"
     },
     {
      "id": "probe",
@@ -78,22 +79,24 @@
     {
      "id": "skin",
      "name": "Skin shader (subsurface scattering, pores, colour zones)",
-     "status": "active",
-     "note": "Random-walk skin SSS, pores, micro-furrows, mottling, region masks",
+     "status": "done",
+     "note": "Random-walk subsurface skin, procedural pores, furrows, mottling and colour zones (lips, cheeks, beard shadow, lids, nails, mouth)",
      "media": [
       "media/hero_portrait.jpg",
       "media/face_cycles_p2.jpg",
       "media/face_cycles_p1.jpg"
-     ]
+     ],
+     "done": "2026-11-09T04:14:04+10:00"
     },
     {
      "id": "eyes",
      "name": "Eyes (cornea, iris, sclera, tear line)",
-     "status": "active",
-     "note": "Recessed iris, refractive cornea (IOR 1.376), procedural iris fibres",
+     "status": "done",
+     "note": "Recessed procedural hazel iris under a refractive cornea (IOR 1.376); EEVEE gets a clear-coat output",
      "media": [
       "media/hero_eyes.jpg"
-     ]
+     ],
+     "done": "2026-11-09T04:14:04+10:00"
     },
     {
      "id": "mouth",
@@ -105,12 +108,13 @@
     {
      "id": "hair",
      "name": "Hair: scalp, eyebrows, eyelashes, stubble",
-     "status": "active",
-     "note": "Crop, brows, lashes on eyelid bones, stubble; Chiang hair in Cycles, Kajiya-Kay in EEVEE",
+     "status": "done",
+     "note": "110k scalp strands, brows, 400 lashes on the eyelid bones, 32k stubble; Chiang in Cycles, Principled sheen in EEVEE",
      "media": [
       "media/eevee_face_khronos.jpg",
       "media/face_hair_p4.jpg"
-     ]
+     ],
+     "done": "2026-11-09T04:14:04+10:00"
     }
    ]
   },
@@ -120,20 +124,26 @@
     {
      "id": "shirt",
      "name": "T-shirt",
-     "status": "todo",
+     "status": "done",
      "media": [
       "media/shirt_fit_fix.jpg"
-     ]
+     ],
+     "note": "Grey cotton jersey tee fitted from the body SDF; side seams follow the flanks",
+     "done": "2026-11-09T04:14:04+10:00"
     },
     {
      "id": "jeans",
      "name": "Jeans with front pocket",
-     "status": "todo"
+     "status": "done",
+     "note": "Five-pocket indigo denim with real pocket bags; the pistol bulges the right pocket",
+     "done": "2026-11-09T04:14:04+10:00"
     },
     {
      "id": "shoes",
      "name": "Sneakers",
-     "status": "todo"
+     "status": "done",
+     "note": "Off-white leather sneakers with cupsole, laces and lining; covered foot skin is masked",
+     "done": "2026-11-09T04:14:04+10:00"
     },
     {
      "id": "pistol",
@@ -326,7 +336,9 @@
     {
      "id": "docs",
      "name": "README + docs",
-     "status": "todo"
+     "status": "done",
+     "note": "README with method, build commands, layout, limitations and the .blend download",
+     "done": "2026-11-09T04:14:04+10:00"
     }
    ]
   }
@@ -598,6 +610,38 @@
   }
  ],
  "log": [
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: README + docs. README with method, build commands, layout, limitations and the .blend download"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: Sneakers. Off-white leather sneakers with cupsole, laces and lining; covered foot skin is masked"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: Jeans with front pocket. Five-pocket indigo denim with real pocket bags; the pistol bulges the right pocket"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: T-shirt. Grey cotton jersey tee fitted from the body SDF; side seams follow the flanks"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: Hair: scalp, eyebrows, eyelashes, stubble. 110k scalp strands, brows, 400 lashes on the eyelid bones, 32k stubble; Chiang in Cycles, Principled sheen in EEVEE"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: Eyes (cornea, iris, sclera, tear line). Recessed procedural hazel iris under a refractive cornea (IOR 1.376); EEVEE gets a clear-coat output"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: Skin shader (subsurface scattering, pores, colour zones). Random-walk subsurface skin, procedural pores, furrows, mottling and colour zones (lips, cheeks, beard shadow, lids, nails, mouth)"
+  },
+  {
+   "time": "2026-11-09T04:14:04+10:00",
+   "text": "Done: Repository + progress site"
+  },
   {
    "time": "2026-11-09T04:13:00+10:00",
    "text": "Finished. 13 animation clips, 5 Cycles hero stills and a turntable are on this page; the full character with every clip as an action is released as realistic_human.blend (v1.0). Known limits are listed in the README."
