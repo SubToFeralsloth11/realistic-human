@@ -10,6 +10,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_body import make_program  # noqa: E402
 from rh import hair  # noqa: E402
+from rh.sdf import group_distance  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,10 +32,16 @@ def main():
     prog = make_program()
     rng = np.random.default_rng(7)
     out = {}
+    # no roots on the ears themselves (the scalp/sideburn masks are positional and reach them)
+    ear_leaves = [l for l in prog.leaves() if l.tag == "ear"]
+    ear_free = np.ones(len(verts), np.float32)
+    if ear_leaves:
+        sel = np.where(verts[:, 2] > 1.50)[0]
+        ear_free[sel] = np.clip((group_distance(ear_leaves, verts[sel]) - 0.002) / 0.006, 0, 1)
     groups = {
-        "scalp": lambda: hair.scalp(prog, verts, tris, m["attr_m_scalp"], rng, int(110000 * a.scale)),
+        "scalp": lambda: hair.scalp(prog, verts, tris, m["attr_m_scalp"] * ear_free, rng, int(110000 * a.scale)),
         "brows": lambda: hair.eyebrows(prog, verts, tris, m["attr_m_brow"], rng, int(1500 * a.scale)),
-        "stubble": lambda: hair.stubble(prog, verts, tris, m["attr_m_beard"], rng, int(32000 * a.scale)),
+        "stubble": lambda: hair.stubble(prog, verts, tris, m["attr_m_beard"] * ear_free, rng, int(32000 * a.scale)),
     }
     results = {name: fn() for name, fn in groups.items()}
     results.update(hair.eyelashes(rng))

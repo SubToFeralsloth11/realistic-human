@@ -33,24 +33,24 @@ def hair_material(name, melanin, redness, rough, radial, rand):
     nt.links.new(info.outputs["Random"], h.inputs["Random"])
     out.target = "CYCLES"
     nt.links.new(h.outputs[0], out.inputs[0])
-    # EEVEE approximates the Chiang model poorly (strands go black): Kajiya-Kay reflection +
-    # transmission tinted by the equivalent melanin colour, with a per-strand value jitter
+    # EEVEE: its Hair BSDF ignores the fibre colour on curves (dark hair renders blond), so the
+    # EEVEE output is a Principled sheen over the equivalent melanin albedo with per-strand jitter
     tint = _melanin_rgb(melanin, redness)
     ev = nt.nodes.new("ShaderNodeOutputMaterial")
     ev.target = "EEVEE"
-    refl = nt.nodes.new("ShaderNodeBsdfHair"); refl.component = "Reflection"
-    trans = nt.nodes.new("ShaderNodeBsdfHair"); trans.component = "Transmission"
-    for node, k in ((refl, 1.0), (trans, 2.2)):
-        node.inputs["Color"].default_value = (min(tint[0] * k, 1), min(tint[1] * k, 1), min(tint[2] * k, 1), 1)
-        node.inputs["RoughnessU"].default_value = 0.25
-        node.inputs["RoughnessV"].default_value = 0.6
-    diff = nt.nodes.new("ShaderNodeBsdfDiffuse")
-    diff.inputs["Color"].default_value = (*tint, 1)
-    add1 = nt.nodes.new("ShaderNodeAddShader")
-    add2 = nt.nodes.new("ShaderNodeAddShader")
-    nt.links.new(refl.outputs[0], add1.inputs[0]); nt.links.new(trans.outputs[0], add1.inputs[1])
-    nt.links.new(add1.outputs[0], add2.inputs[0]); nt.links.new(diff.outputs[0], add2.inputs[1])
-    nt.links.new(add2.outputs[0], ev.inputs[0])
+    pb = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    jitter = nt.nodes.new("ShaderNodeMapRange")
+    jitter.inputs["To Min"].default_value = 1 - rand
+    jitter.inputs["To Max"].default_value = 1 + rand
+    nt.links.new(info.outputs["Random"], jitter.inputs["Value"])
+    col = nt.nodes.new("ShaderNodeVectorMath")
+    col.operation = "SCALE"
+    col.inputs[0].default_value = [c * 0.6 for c in tint]
+    nt.links.new(jitter.outputs["Result"], col.inputs["Scale"])
+    nt.links.new(col.outputs["Vector"], pb.inputs["Base Color"])
+    pb.inputs["Roughness"].default_value = 0.42
+    pb.inputs["Specular IOR Level"].default_value = 0.35
+    nt.links.new(pb.outputs[0], ev.inputs[0])
     return mat
 
 
