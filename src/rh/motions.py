@@ -414,7 +414,7 @@ def backflip(skel, seconds=3.3):
 def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None, face=None):
     """Simulate from an animated frame; returns frames keyed from the particle state.
     face(i) -> (jaw_open_deg, lid_close 0..1) keeps the face alive on top of the physics."""
-    from .ragdoll import Ragdoll, to_rotations
+    from .ragdoll import Ragdoll, clamp_fingers, to_rotations
     rd = Ragdoll(skel, start.W, start.H, prev.W, prev.H)
     setup(rd)
     out = []
@@ -434,6 +434,9 @@ def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None, face=None
         root_head = P - pel_off
         q, loc = skel.basis(W, root_head - skel.head["root"])
         Wf, Hf = skel.fk({b: _mat(qq) for b, qq in q.items()}, root_head - skel.head["root"])
+        if clamp_fingers(skel, Wf, Hf):
+            q, loc = skel.basis(Wf, root_head - skel.head["root"])
+            Wf, Hf = skel.fk({b: _mat(qq) for b, qq in q.items()}, root_head - skel.head["root"])
         out.append(Frame(q, loc, Wf, Hf, {"pelvis": P.copy()}))
     return out
 

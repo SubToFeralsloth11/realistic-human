@@ -10,7 +10,7 @@ the parent, so the result keys straight onto the rig.
 """
 import numpy as np
 
-from .pose import axis_angle, nrm
+from .pose import axis_angle, nrm, quat_from_matrix
 
 G = np.array([0.0, 0.0, -9.81])
 
@@ -169,23 +169,56 @@ def to_rotations(skel, rd, x, W_rest_like):
         W[b] = W_rest_like[b]
     W["pelvis"] = Rp @ W_rest_like["pelvis"]
 
-    def aim(bone, parent_R, a, b):
+    def aim(bone, parent_R, a, b, also=()):
+        """Rotate `bone` (and `also`, rigidly) so the start-pose chord a->b maps onto the current
+        particles; FK then lands on the simulation even when the chord is not the bone axis."""
         cur = nrm(x[idx[b]] - x[idx[a]])
-        rest_dir = parent_R @ W_rest_like[bone][:, 1]
+        rest_dir = parent_R @ nrm(rd.rest[idx[b]] - rd.rest[idx[a]])
         axis = np.cross(rest_dir, cur)
         sa = np.linalg.norm(axis)
         ang = np.degrees(np.arctan2(sa, np.dot(rest_dir, cur)))
         R = axis_angle(axis, ang) @ parent_R if sa > 1e-9 else parent_R
-        W[bone] = R @ W_rest_like[bone]
+        for bn in (bone, *also):
+            W[bn] = R @ W_rest_like[bn]
         return R
 
-    # spine: share the pelvis->chest bend
-    Rs = aim("spine_01", Rp, "pelvis", "spine")
-    W["spine_02"] = Rs @ W_rest_like["spine_02"]
-    Rc = aim("spine_03", Rs, "spine", "chest")
-    Rc2 = aim("spine_04", Rc, "chest", "neck")
-    Rn = aim("neck_01", Rc2, "neck", "head")
-    W["neck_02"] = Rn @ W_rest_like["neck_02"]
+    # chest block: full frame (its roll about the spine matters: it carries the shoulders)
+    def block_frame(P, up_a, up_b, side_a, side_b):
+        up = nrm(P[idx[up_b]] - P[idx[up_a]])
+        side = P[idx[side_a]] - P[idx[side_b]]
+        side = nrm(side - up * np.dot(side, up))
+        return np.stack([side, up, np.cross(side, up)], 1)
+
+    Rchest = block_frame(x, "chest", "neck", "sh_l", "sh_r") @ block_frame(rd.rest, "chest", "neck", "sh_l", "sh_r").T
+    # spine: each bone aims exactly at its particle (so FK lands on the simulation); only the twist
+    # about the bone comes from the pelvis -> chest rotation, spread along the lumbar/thoracic spine
+    rel = Rchest @ Rp.T
+    qr = quat_from_matrix(rel)
+    half = np.arccos(np.clip(abs(qr[0]), -1.0, 1.0))
+    axis = np.array(qr[1:]) * (1 if qr[0] >= 0 else -1)
+    axis = axis / np.linalg.norm(axis) if np.linalg.norm(axis) > 1e-9 else np.array([0.0, 0.0, 1.0])
+
+    def twist(bones, R, frac, a, b):
+        """Re-twist the rigid group about its chord a->b (end points stay on the particles) toward
+        the slerped pelvis->chest rotation; returns the group's new rotation."""
+        c = nrm(x[idx[b]] - x[idx[a]])
+        target = axis_angle(axis, np.degrees(2 * half * frac)) @ Rp @ W_rest_like[bones[0]]
+        now = W[bones[0]]
+        x_now = nrm(now[:, 0] - c * np.dot(now[:, 0], c))
+        x_want = target[:, 0] - c * np.dot(target[:, 0], c)
+        if np.linalg.norm(x_want) < 1e-9:
+            return R
+        x_want = nrm(x_want)
+        ang = np.degrees(np.arctan2(np.dot(np.cross(x_now, x_want), c), np.dot(x_now, x_want)))
+        R = axis_angle(c, ang) @ R
+        for bn in bones:
+            W[bn] = R @ W_rest_like[bn]
+        return R
+
+    Rs = twist(("spine_01", "spine_02"), aim("spine_01", Rp, "pelvis", "spine", also=("spine_02",)), 0.3, "pelvis", "spine")
+    Rc = twist(("spine_03",), aim("spine_03", Rs, "spine", "chest"), 0.7, "spine", "chest")
+    Rc2 = twist(("spine_04",), aim("spine_04", Rc, "chest", "neck"), 1.0, "chest", "neck")
+    Rn = aim("neck_01", Rc2, "neck", "head", also=("neck_02",))
     # head orientation from top + nose
     up = nrm(x[idx["top"]] - x[idx["head"]])
     fw = x[idx["nose"]] - x[idx["head"]]
@@ -207,6 +240,18 @@ def to_rotations(skel, rd, x, W_rest_like):
         Rl = aim(f"lowerarm_{side}", Ru, f"el_{side}", f"wr_{side}")
         W[f"lowerarm_twist_01_{side}"] = Rl @ W_rest_like[f"lowerarm_twist_01_{side}"]
         Rha = aim(f"hand_{side}", Rl, f"wr_{side}", f"fi_{side}")
+        # a hand resting on the floor lies flat: roll it (nearest way) until its width is level
+        wz = x[idx[f"wr_{side}"]][2]
+        if wz < 0.09:
+            hy = W[f"hand_{side}"][:, 1]
+            hx = W[f"hand_{side}"][:, 0]
+            level = np.cross(hy, [0.0, 0.0, 1.0])
+            if np.linalg.norm(level) > 1e-6:
+                level = nrm(level) * (1 if np.dot(nrm(level), hx) >= 0 else -1)
+                ang = np.degrees(np.arctan2(np.dot(np.cross(hx, level), hy), np.dot(hx, level)))
+                Rroll = axis_angle(hy, ang * float(np.clip((0.09 - wz) / 0.05, 0.0, 1.0)))
+                Rha = Rroll @ Rha
+                W[f"hand_{side}"] = Rha @ W_rest_like[f"hand_{side}"]
         for f in ("thumb", "index", "middle", "ring", "pinky"):
             for i in (1, 2, 3):
                 bn = f"{f}_0{i}_{side}"
@@ -216,3 +261,36 @@ def to_rotations(skel, rd, x, W_rest_like):
         Rf = aim(f"foot_{side}", Rk, f"ankle_{side}", f"toe_{side}")
         W[f"ball_{side}"] = Rf @ W_rest_like[f"ball_{side}"]
     return W, P
+
+
+FINGERS = ("thumb", "index", "middle", "ring", "pinky")
+
+
+def clamp_fingers(skel, W, H, floor=0.008):
+    """Lift finger segments that the copied curl pushed through the floor: each offending
+    segment is pitched up about its horizontal axis (its children follow rigidly).
+    Returns True if anything changed; W and H are updated in place."""
+    changed = False
+    for side in ("l", "r"):
+        for f in FINGERS:
+            chain = [f"{f}_0{i}_{side}" for i in (1, 2, 3)]
+            for k, b in enumerate(chain):
+                if b not in W:
+                    continue
+                if k > 0:
+                    p = chain[k - 1]
+                    H[b] = H[p] + W[p] @ skel.offset(b)
+                d = W[b][:, 1]
+                tail_z = H[b][2] + d[2] * skel.length[b]
+                if tail_z >= floor:
+                    continue
+                want = np.clip((floor - H[b][2]) / skel.length[b], -1.0, 1.0)
+                delta = np.degrees(np.arcsin(want) - np.arcsin(np.clip(d[2], -1.0, 1.0)))
+                axis = np.cross(d, [0.0, 0.0, 1.0])
+                if np.linalg.norm(axis) < 1e-6:
+                    continue
+                R = axis_angle(nrm(axis), delta)
+                for c in chain[k:]:
+                    W[c] = R @ W[c]
+                changed = True
+    return changed
