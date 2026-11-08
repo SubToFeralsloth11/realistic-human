@@ -100,6 +100,14 @@ def key_channels(ob, frames, channels, constant=False, name=None):
 
 
 # ------------------------------------------------------------------ stage
+def key_light_azimuth(cam_offset, side_deg=55.0):
+    """Sun azimuth (outdoor_stage convention) that puts the sun `side_deg` to the side of the
+    camera's direction from the subject: a three-quarter key with modelling on the face."""
+    a = math.atan2(cam_offset[1], cam_offset[0]) + math.radians(side_deg)
+    sx, sy = math.cos(a), math.sin(a)
+    return math.degrees(math.atan2(sx, -sy))
+
+
 def outdoor_stage(sun_elev=24.0, sun_az=215.0, strength=1.0):
     scene = bpy.context.scene
     world = bpy.data.worlds.new("Sky")

@@ -46,9 +46,9 @@ def main():
     fr = np.arange(1, n + 1)
     anim.key_rig(rig, fr, [f.quats for f in frames_data], [f.root_loc for f in frames_data], name=clip)
     targets = [f.extra.get("cam", f.extra.get("pelvis", np.array([0, 0, 1.0]))) for f in frames_data]
-    anim.outdoor_stage()
-    anim.follow_camera("Cam", fr, targets, cam_spec.get("offset", (2.6, -3.4, 0.35)), lens=cam_spec.get("lens", 40),
-                       smooth=cam_spec.get("smooth", 10))
+    offset = cam_spec.get("offset", (2.6, -3.4, 0.35))
+    anim.outdoor_stage(sun_elev=34.0, sun_az=anim.key_light_azimuth(offset), strength=0.85)
+    anim.follow_camera("Cam", fr, targets, offset, lens=cam_spec.get("lens", 40), smooth=cam_spec.get("smooth", 10))
     anim.setup_eevee(res=res, samples=samples)
     rng = opt(a, "--frames", None)
     f0, f1 = (int(x) for x in rng.split(":")) if rng else (1, n)
