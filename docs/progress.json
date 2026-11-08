@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-09T03:47:47+10:00",
+ "updated": "2026-11-09T03:48:15+10:00",
  "now": "Rendering walk, run, backflip, jump, fall, shot, idle, crouch, punch, then Cycles hero stills",
  "phases": [
   {
@@ -314,11 +314,12 @@
     {
      "id": "videos",
      "name": "Animation preview videos",
-     "status": "active",
+     "status": "done",
      "media": [
       "media/anim_proof_dressed.jpg"
      ],
-     "note": "Rendering all clips at 1280x720 in EEVEE"
+     "note": "All 13 clips rendered at 1280x720, 30 fps (EEVEE): pistol routine (plus draw/shoot/reload/holster cuts), walk, run, jump, backflip, fall, shot, idle, crouch, punch",
+     "done": "2026-11-09T03:48:15+10:00"
     },
     {
      "id": "docs",
@@ -588,6 +589,10 @@
   }
  ],
  "log": [
+  {
+   "time": "2026-11-09T03:48:15+10:00",
+   "text": "Done: Animation preview videos. All 13 clips rendered at 1280x720, 30 fps (EEVEE): pistol routine (plus draw/shoot/reload/holster cuts), walk, run, jump, backflip, fall, shot, idle, crouch, punch"
+  },
   {
    "time": "2026-11-09T03:47:47+10:00",
    "text": "Done: Put pistol back in pocket"
