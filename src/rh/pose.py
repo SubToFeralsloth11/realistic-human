@@ -214,14 +214,26 @@ class Pose:
         ca = np.clip((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1)
         mid = start + L1 * (ca * u + np.sqrt(1 - ca * ca) * v)
         end = start + u * d
-        # hinge axis sign matched to the rest frame
+        # The hinge h = u x v (bend plane normal). In the rest pose the same construction gives h0;
+        # each bone keeps h0 at the same place in its own frame, so the bones only swing about the
+        # hinge and never pick up a spurious roll (arm bones carry the hinge on local Z, leg bones
+        # on local X).
         u0 = nrm(s.tail[lower] - s.head[upper])
         h0 = nrm(np.cross(u0, rest_pole_dir))
-        sign = 1.0 if np.dot(h0, s.A[upper][:, 2]) >= 0 else -1.0
-        h = sign * nrm(np.cross(u, v))
-        Wu = frame_from(mid - start, h)
-        Wl = frame_from(end - mid, h)
+        h = nrm(np.cross(u, v))
+        Wu = self._hinge_frame(upper, mid - start, h, h0)
+        Wl = self._hinge_frame(lower, end - mid, h, h0)
         return Wu, Wl, end
+
+    def _hinge_frame(self, bone, ydir, h, h0):
+        hl = self.s.A[bone].T @ h0                    # rest hinge in the bone's local frame (y ~ 0)
+        phi = np.arctan2(hl[2], hl[0])
+        y = nrm(ydir)
+        h = nrm(h - y * np.dot(h, y))
+        k = -np.cross(y, h)
+        x = np.cos(phi) * h - np.sin(phi) * k
+        z = np.sin(phi) * h + np.cos(phi) * k
+        return np.stack([x, y, z], axis=1)
 
     def solve(self):
         s = self.s
