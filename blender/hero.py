@@ -78,7 +78,7 @@ def main():
         hair.load_hair(hp, parent=rig, parent_bone="head")
     try:
         import clothes
-        clothes.load_clothes(rig=rig, body=body)
+        clothes.load_clothes(rig=rig, body=body, ratio=0.6)
     except Exception as ex:
         print("no clothes:", ex)
     skel = Skeleton(os.path.join(C.BUILD, "rig.json"))

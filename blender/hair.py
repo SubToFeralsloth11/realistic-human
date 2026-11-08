@@ -11,6 +11,9 @@ STYLE = {
     "stubble": (0.86, 0.22, 0.40, 0.35, 0.18),
     "lashes":  (0.97, 0.15, 0.25, 0.30, 0.05),
 }
+# EEVEE draws strands at least a pixel wide, so 0.05 mm stubble reads as a dirty patch at video
+# resolutions; the skin's beard-shadow mask carries the stubble there instead.
+EEVEE_GROUPS = ("scalp", "brows", "lash_ul", "lash_ll", "lash_ur", "lash_lr")
 
 
 def hair_material(name, melanin, redness, rough, radial, rand):

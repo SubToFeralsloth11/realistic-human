@@ -27,10 +27,10 @@ def main():
     rig, body, eyes = character.build_character(mesh)
     hp = os.path.join(C.BUILD, "hair.npz")
     if os.path.exists(hp):
-        hair.load_hair(hp, parent=rig, parent_bone="head")
+        hair.load_hair(hp, parent=rig, parent_bone="head", groups=hair.EEVEE_GROUPS)
     try:
         import clothes
-        clothes.load_clothes(rig=rig, body=body)
+        clothes.load_clothes(rig=rig, body=body, ratio=0.3)
     except Exception as ex:
         print("no clothes:", ex)
     anim.outdoor_stage()
