@@ -251,7 +251,7 @@ def build(prog, k_neck=0.02):
     """Append the head to a program that already holds the neck and body."""
     prog.add(cranium(), k=k_neck)
     prog.add(Union([face()], bone="head", tag="face"), k=0.012)
-    prog.add(jaw(), k=0.010)
+    prog.add(jaw(), k=0.016)     # soft enough that the mandible border shades into the neck without a groove
     prog.add(nose(), k=0.0050)
     crease = bump_tube([hp(0.0105, -0.0330, -0.0385), hp(0.0160, -0.0265, -0.0405), hp(0.0172, -0.0222, -0.0458)],
                        0.0015, 0.004, -0.0008)                                                  # alar crease
