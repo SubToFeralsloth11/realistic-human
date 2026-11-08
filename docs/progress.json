@@ -1,64 +1,321 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-08T19:55:00+11:00",
- "now": "Setting up the repository and this progress site",
+ "updated": "2026-11-08T20:53:30+10:00",
+ "now": "Growing hair (crop, brows, lashes, stubble) and fixing skin exposure",
  "phases": [
-  {"name": "Setup", "items": [
-   {"id": "site", "name": "Repository + progress site", "status": "active"},
-   {"id": "probe", "name": "Blender 5.1 API + GPU probe", "status": "done", "note": "Blender 5.1.2, Cycles on Metal (Apple A18 Pro GPU, 5 cores), EEVEE for animation previews"}
-  ]},
-  {"name": "Body model", "items": [
-   {"id": "engine", "name": "SDF anatomy engine + surface-nets mesher", "status": "todo"},
-   {"id": "body", "name": "Skeleton + body anatomy (muscle and bone landmarks)", "status": "todo"},
-   {"id": "head", "name": "Head + face anatomy", "status": "todo"},
-   {"id": "ears", "name": "Ears", "status": "todo"},
-   {"id": "hands", "name": "Hands + nails", "status": "todo"},
-   {"id": "clay", "name": "Clay render previews", "status": "todo"}
-  ]},
-  {"name": "Look dev", "items": [
-   {"id": "skin", "name": "Skin shader (subsurface scattering, pores, colour zones)", "status": "todo"},
-   {"id": "eyes", "name": "Eyes (cornea, iris, sclera, tear line)", "status": "todo"},
-   {"id": "mouth", "name": "Teeth + mouth interior", "status": "todo"},
-   {"id": "hair", "name": "Hair: scalp, eyebrows, eyelashes, stubble", "status": "todo"}
-  ]},
-  {"name": "Wardrobe + props", "items": [
-   {"id": "shirt", "name": "T-shirt", "status": "todo"},
-   {"id": "jeans", "name": "Jeans with front pocket", "status": "todo"},
-   {"id": "shoes", "name": "Sneakers", "status": "todo"},
-   {"id": "pistol", "name": "Pistol (slide, magazine, trigger, casings, muzzle flash)", "status": "todo"}
-  ]},
-  {"name": "Rig", "items": [
-   {"id": "rig", "name": "Armature + skin weights", "status": "todo"},
-   {"id": "controls", "name": "IK, eye aim, blink shape keys", "status": "todo"}
-  ]},
-  {"name": "Animations", "items": [
-   {"id": "idle", "name": "Idle (breathing, weight shift)", "status": "todo"},
-   {"id": "walk", "name": "Walk", "status": "todo"},
-   {"id": "run", "name": "Run", "status": "todo"},
-   {"id": "jump", "name": "Jump", "status": "todo"},
-   {"id": "backflip", "name": "Backflip", "status": "todo"},
-   {"id": "draw", "name": "Take pistol out of pocket", "status": "todo"},
-   {"id": "shoot", "name": "Shoot (recoil, casings, flash)", "status": "todo"},
-   {"id": "reload", "name": "Reload", "status": "todo"},
-   {"id": "holster", "name": "Put pistol back in pocket", "status": "todo"},
-   {"id": "fall", "name": "Fall over (ragdoll physics)", "status": "todo"},
-   {"id": "shot", "name": "Getting shot (hit reaction + ragdoll)", "status": "todo"},
-   {"id": "crouch", "name": "Extra: crouch", "status": "todo"},
-   {"id": "punch", "name": "Extra: punch combo", "status": "todo"}
-  ]},
-  {"name": "Final", "items": [
-   {"id": "hero", "name": "Hero Cycles renders + turntable", "status": "todo"},
-   {"id": "videos", "name": "Animation preview videos", "status": "todo"},
-   {"id": "docs", "name": "README + docs", "status": "todo"}
-  ]}
+  {
+   "name": "Setup",
+   "items": [
+    {
+     "id": "site",
+     "name": "Repository + progress site",
+     "status": "active"
+    },
+    {
+     "id": "probe",
+     "name": "Blender 5.1 API + GPU probe",
+     "status": "done",
+     "note": "Blender 5.1.2, Cycles on Metal (Apple A18 Pro GPU, 5 cores), EEVEE for animation previews"
+    }
+   ]
+  },
+  {
+   "name": "Body model",
+   "items": [
+    {
+     "id": "engine",
+     "name": "SDF anatomy engine + surface-nets mesher",
+     "status": "done",
+     "note": "numpy SDF engine (lofts, heightfields, displacement bumps, smooth CSG) + sparse multi-level surface nets: watertight all-quad meshes at 0.8-2.5 mm",
+     "done": "2026-11-08T20:53:29+10:00"
+    },
+    {
+     "id": "body",
+     "name": "Skeleton + body anatomy (muscle and bone landmarks)",
+     "status": "active",
+     "note": "Lofted skin envelopes from male anthropometry + muscle relief",
+     "media": [
+      "media/body_clay_v6.jpg",
+      "media/body_clay_v1.jpg"
+     ]
+    },
+    {
+     "id": "head",
+     "name": "Head + face anatomy",
+     "status": "active",
+     "note": "Face = bicubic heightfield through a soft-tissue depth table + nose loft, alar rims, lip swellings, lid shells cut by two lid planes",
+     "media": [
+      "media/face_clay_v6.jpg",
+      "media/face_clay_v1.jpg"
+     ]
+    },
+    {
+     "id": "ears",
+     "name": "Ears",
+     "status": "active"
+    },
+    {
+     "id": "hands",
+     "name": "Hands + nails",
+     "status": "active"
+    },
+    {
+     "id": "clay",
+     "name": "Clay render previews",
+     "status": "todo"
+    }
+   ]
+  },
+  {
+   "name": "Look dev",
+   "items": [
+    {
+     "id": "skin",
+     "name": "Skin shader (subsurface scattering, pores, colour zones)",
+     "status": "active",
+     "note": "Random-walk skin SSS, pores, micro-furrows, mottling, region masks",
+     "media": [
+      "media/face_cycles_p1.jpg"
+     ]
+    },
+    {
+     "id": "eyes",
+     "name": "Eyes (cornea, iris, sclera, tear line)",
+     "status": "active",
+     "note": "Recessed iris, refractive cornea (IOR 1.376), procedural iris fibres"
+    },
+    {
+     "id": "mouth",
+     "name": "Teeth + mouth interior",
+     "status": "todo"
+    },
+    {
+     "id": "hair",
+     "name": "Hair: scalp, eyebrows, eyelashes, stubble",
+     "status": "active",
+     "note": "Strands grown against the SDF: crop, brows, lashes, stubble"
+    }
+   ]
+  },
+  {
+   "name": "Wardrobe + props",
+   "items": [
+    {
+     "id": "shirt",
+     "name": "T-shirt",
+     "status": "todo"
+    },
+    {
+     "id": "jeans",
+     "name": "Jeans with front pocket",
+     "status": "todo"
+    },
+    {
+     "id": "shoes",
+     "name": "Sneakers",
+     "status": "todo"
+    },
+    {
+     "id": "pistol",
+     "name": "Pistol (slide, magazine, trigger, casings, muzzle flash)",
+     "status": "done",
+     "note": "Compact 9mm, 150k tris, separate slide/barrel/trigger/magazine/casing/flash",
+     "done": "2026-11-08T20:53:30+10:00",
+     "media": [
+      "media/pistol_34.jpg",
+      "media/pistol_exploded.jpg",
+      "media/pistol_left.jpg"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Rig",
+   "items": [
+    {
+     "id": "rig",
+     "name": "Armature + skin weights",
+     "status": "todo"
+    },
+    {
+     "id": "controls",
+     "name": "IK, eye aim, blink shape keys",
+     "status": "todo"
+    }
+   ]
+  },
+  {
+   "name": "Animations",
+   "items": [
+    {
+     "id": "idle",
+     "name": "Idle (breathing, weight shift)",
+     "status": "todo"
+    },
+    {
+     "id": "walk",
+     "name": "Walk",
+     "status": "todo"
+    },
+    {
+     "id": "run",
+     "name": "Run",
+     "status": "todo"
+    },
+    {
+     "id": "jump",
+     "name": "Jump",
+     "status": "todo"
+    },
+    {
+     "id": "backflip",
+     "name": "Backflip",
+     "status": "todo"
+    },
+    {
+     "id": "draw",
+     "name": "Take pistol out of pocket",
+     "status": "todo"
+    },
+    {
+     "id": "shoot",
+     "name": "Shoot (recoil, casings, flash)",
+     "status": "todo"
+    },
+    {
+     "id": "reload",
+     "name": "Reload",
+     "status": "todo"
+    },
+    {
+     "id": "holster",
+     "name": "Put pistol back in pocket",
+     "status": "todo"
+    },
+    {
+     "id": "fall",
+     "name": "Fall over (ragdoll physics)",
+     "status": "todo"
+    },
+    {
+     "id": "shot",
+     "name": "Getting shot (hit reaction + ragdoll)",
+     "status": "todo"
+    },
+    {
+     "id": "crouch",
+     "name": "Extra: crouch",
+     "status": "todo"
+    },
+    {
+     "id": "punch",
+     "name": "Extra: punch combo",
+     "status": "todo"
+    }
+   ]
+  },
+  {
+   "name": "Final",
+   "items": [
+    {
+     "id": "hero",
+     "name": "Hero Cycles renders + turntable",
+     "status": "todo"
+    },
+    {
+     "id": "videos",
+     "name": "Animation preview videos",
+     "status": "todo"
+    },
+    {
+     "id": "docs",
+     "name": "README + docs",
+     "status": "todo"
+    }
+   ]
+  }
  ],
  "stats": {
   "Blender": "5.1.2",
   "Renderer": "Cycles (stills), EEVEE (animation previews)",
-  "Assets downloaded": "0. Every mesh, texture and motion is generated by code in this repo"
+  "Assets downloaded": "0. Every mesh, texture and motion is generated by code in this repo",
+  "Face mesh": "~365k quads at 0.9 mm",
+  "Pistol": "150k triangles, 11 animated parts"
  },
- "gallery": [],
+ "gallery": [
+  {
+   "src": "media/pistol_34.jpg",
+   "caption": "Pistol 3/4 (procedural nitride slide, stippled polymer frame)",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "pistol"
+  },
+  {
+   "src": "media/pistol_exploded.jpg",
+   "caption": "Pistol: slide locked back, magazine out, case in the air",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "pistol"
+  },
+  {
+   "src": "media/pistol_left.jpg",
+   "caption": "Pistol, left side",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "pistol"
+  },
+  {
+   "src": "media/face_cycles_p1.jpg",
+   "caption": "First Cycles look-dev: skin SSS + eyes (overexposed, being fixed)",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "skin"
+  },
+  {
+   "src": "media/face_clay_v6.jpg",
+   "caption": "Face v6: heightfield face, anatomical nose, lip swellings, eyeballs in",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "head"
+  },
+  {
+   "src": "media/face_clay_v1.jpg",
+   "caption": "Face v1: primitive soup",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "head"
+  },
+  {
+   "src": "media/body_clay_v6.jpg",
+   "caption": "Clay v6: lofted skin envelopes, one continuous loft per limb, soft relief",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "body"
+  },
+  {
+   "src": "media/body_clay_v1.jpg",
+   "caption": "Clay v1: first SDF pass read as an ecorche (separate muscle blobs)",
+   "time": "2026-11-08T20:53:30+10:00",
+   "type": "image",
+   "item": "body"
+  }
+ ],
  "log": [
-  {"time": "2026-11-08T19:55:00+11:00", "text": "Project started. Plan: sculpt the body as a signed distance field of bones, muscles and fat pads, mesh it into quads, then shade, dress, rig and animate it, all from code."}
+  {
+   "time": "2026-11-08T20:53:30+10:00",
+   "text": "Face rebuilt as a heightfield skin through a landmark depth table; nose, lips and eyelids added as anatomical overhang features. Pistol finished by a helper agent."
+  },
+  {
+   "time": "2026-11-08T20:53:30+10:00",
+   "text": "Done: Pistol (slide, magazine, trigger, casings, muzzle flash). Compact 9mm, 150k tris, separate slide/barrel/trigger/magazine/casing/flash"
+  },
+  {
+   "time": "2026-11-08T20:53:29+10:00",
+   "text": "Done: SDF anatomy engine + surface-nets mesher. numpy SDF engine (lofts, heightfields, displacement bumps, smooth CSG) + sparse multi-level surface nets: watertight all-quad meshes at 0.8-2.5 mm"
+  },
+  {
+   "time": "2026-11-08T19:55:00+11:00",
+   "text": "Project started. Plan: sculpt the body as a signed distance field of bones, muscles and fat pads, mesh it into quads, then shade, dress, rig and animate it, all from code."
+  }
  ]
 }
