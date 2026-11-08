@@ -19,6 +19,18 @@ def smooth(x):
     return x * x * (3 - 2 * x)
 
 
+def blink_at(t, times=(0.6, 3.9, 6.8, 9.5, 12.1), dur=0.16):
+    """Eyelid closure 0..1 for blinks centred on the given times (fast close, slower open)."""
+    b = 0.0
+    for tb in times:
+        d = t - tb
+        if -0.05 <= d < 0:
+            b = max(b, 1 + d / 0.05)
+        elif 0 <= d < dur - 0.05:
+            b = max(b, 1 - d / (dur - 0.05))
+    return b
+
+
 def interp_keys(t, keys):
     """Piecewise cubic (Catmull-Rom) through (time, value) keys; values may be vectors."""
     ts = np.array([k[0] for k in keys], float)
@@ -154,6 +166,7 @@ def locomotion(skel, seconds, params, start_y=0.0):
         p.spine(pitch=params["lean"] * 0.7, roll=-0.5 * params["pel_roll"] * np.sin(2 * np.pi * ph_l),
                 yaw=(params["thorax_yaw"] + params["pel_yaw"]) * np.cos(2 * np.pi * ph_l))
         p.neck(pitch=params["head_pitch"] - params["lean"] * 0.6, yaw=-params["thorax_yaw"] * 0.8 * np.cos(2 * np.pi * ph_l))
+        p.blink(blink_at(t, (0.9, 3.6, 6.2)))
         for side, sg in (("l", 1.0), ("r", -1.0)):
             ph, ank, theta, toe = legs[side]
             p.leg(side, ank, ank + np.array([0.0, -0.6, 0.45]), foot_rot=pitch_rot(theta) @ skel.A[f"foot_{side}"], toe=toe)
@@ -239,6 +252,8 @@ def idle(skel, seconds=6.0):
         p.spine(pitch=-0.8 * breath + 1.5, roll=1.6 * shift, yaw=-1.0 * shift)
         yaw, pitch = interp_keys(t, look)
         p.neck(pitch=pitch, yaw=yaw, roll=-1.0 * shift)
+        p.blink(blink_at(t, (0.8, 2.9, 4.4, 5.6)))
+        p.gaze(yaw=yaw * 0.25, pitch=pitch * 0.3)
         stand(skel, p, base=(0.0, 0.0), curl=0.36 + 0.03 * np.sin(t * 1.3))
         hang_arms(p, (0.022 * shift, 0.0), -drop, sway=0.004 * breath)
         for side in ("l", "r"):
@@ -396,8 +411,9 @@ def backflip(skel, seconds=3.3):
 
 
 # ------------------------------------------------------------------ physics clips (ragdoll)
-def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None):
-    """Simulate from an animated frame; returns frames keyed from the particle state."""
+def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None, face=None):
+    """Simulate from an animated frame; returns frames keyed from the particle state.
+    face(i) -> (jaw_open_deg, lid_close 0..1) keeps the face alive on top of the physics."""
     from .ragdoll import Ragdoll, to_rotations
     rd = Ragdoll(skel, start.W, start.H, prev.W, prev.H)
     setup(rd)
@@ -408,6 +424,13 @@ def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None):
             per_frame(rd, i)
         rd.step()
         W, P = to_rotations(skel, rd, rd.x, start.W)
+        if face is not None:
+            jaw, lids = face(i)
+            if "jaw" in W:
+                W["jaw"] = W["jaw"] @ axis_angle([1, 0, 0], -jaw)
+            for s in ("l", "r"):
+                if f"lid_upper_{s}" in W:
+                    W[f"lid_upper_{s}"] = W[f"lid_upper_{s}"] @ axis_angle([1, 0, 0], -36.0 * lids)
         root_head = P - pel_off
         q, loc = skel.basis(W, root_head - skel.head["root"])
         Wf, Hf = skel.fk({b: _mat(qq) for b, qq in q.items()}, root_head - skel.head["root"])
@@ -473,7 +496,9 @@ def shot(skel, seconds=4.5):
     def per_frame(rd, i):
         rd.tone = 0.05 if i < 12 else (0.025 if i < 30 else (0.008 if i < 48 else 0.0))
 
-    sim = _ragdoll_frames(skel, base[hit], base[hit - 1], seconds - 1.2, setup, per_frame)
+    # pain: mouth falls open at the hit, eyes squeeze, then half-closed and slack as he goes down
+    face = lambda i: (14.0 * smooth(i / 4.0) * (1 - 0.4 * smooth((i - 30) / 20.0)), 0.9 * smooth(i / 3.0) * (1 - 0.4 * smooth((i - 10) / 12.0)))
+    sim = _ragdoll_frames(skel, base[hit], base[hit - 1], seconds - 1.2, setup, per_frame, face)
     for f in base:
         f.extra["pelvis"] = np.array([0.0, 0.0, 0.95])
     return base + sim
@@ -500,6 +525,7 @@ def crouch(skel, seconds=5.5):
         p.spine(pitch=lean * 0.5, yaw=look * 0.25)
         p.neck(pitch=-lean * 0.8, yaw=look * 0.75)
         p.gaze(yaw=look * 0.15)
+        p.blink(blink_at(t, (0.5, 2.6, 4.6)))
         for side, sg in (("l", 1.0), ("r", -1.0)):
             flat = np.array([sg * (0.11 + 0.05 * crouched), -0.02, ANKLE_H + LIFT])
             a = stance_ankle(flat, -heel)
@@ -538,6 +564,7 @@ def punch(skel, seconds=4.6):
         p.pelvis(pitch=3.0 * s, yaw=twist * 0.45)
         p.spine(pitch=8.0 * s + 4 * cross, yaw=twist * 0.55, roll=-6.0 * hook)
         p.neck(pitch=-6.0 * s, yaw=-twist * 0.7 + 14.0 * s)
+        p.blink(blink_at(t, (0.3, 1.78, 3.9)))
         # feet: orthodox stance, left foot forward; rear heel lifts and pivots on the cross
         lf = np.array([0.10 * (1 - s) + 0.05 * s, -0.02 - 0.24 * s, ANKLE_H + LIFT])
         rf = np.array([-0.11 * (1 - s) - 0.17 * s, 0.03 + 0.12 * s, ANKLE_H + LIFT])
