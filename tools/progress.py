@@ -3,7 +3,7 @@
 
   progress.py now "<what is happening>"
   progress.py item <id> <todo|active|done> [note]
-  progress.py media <docs-relative-path> "<caption>" [--item <id>] [--poster <path>]
+  progress.py media <docs-relative-path> "<caption>" [--item <id>] [--poster <path>] [--hero]
   progress.py stat "<label>" "<value>"
   progress.py log "<text>"
   progress.py push "<commit message>"     (commits docs/ and pushes to origin main)
@@ -86,10 +86,19 @@ def main(a):
                  "type": "video" if rel.lower().endswith((".mp4", ".webm")) else "image"}
         rest = a[3:]
         while rest:
+            if rest[0] == "--hero":
+                for g in d["gallery"]:
+                    g.pop("hero", None)
+                entry["hero"] = True
+                rest = rest[1:]
+                continue
             flag, val = rest[0], rest[1]
             rest = rest[2:]
             if flag == "--item":
-                find_item(d, val).setdefault("media", []).insert(0, rel)
+                media = find_item(d, val).setdefault("media", [])
+                if rel in media:
+                    media.remove(rel)
+                media.insert(0, rel)
                 entry["item"] = val
             elif flag == "--poster":
                 entry["poster"] = val
