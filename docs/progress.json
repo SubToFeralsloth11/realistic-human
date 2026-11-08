@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-09T00:18:38+10:00",
+ "updated": "2026-11-09T00:34:31+10:00",
  "now": "Rendering walk, run, backflip, jump, fall, shot, idle, crouch, punch, then Cycles hero stills",
  "phases": [
   {
@@ -276,7 +276,11 @@
     {
      "id": "hero",
      "name": "Hero Cycles renders + turntable",
-     "status": "todo"
+     "status": "active",
+     "media": [
+      "media/hero_full.jpg"
+     ],
+     "note": "Full-body still done; portrait, eye macro, aiming and hand close-ups and a turntable rendering"
     },
     {
      "id": "videos",
@@ -307,6 +311,14 @@
   "Teeth": "28 teeth + gums + tongue, 172k vertices"
  },
  "gallery": [
+  {
+   "src": "media/hero_full.jpg",
+   "caption": "Cycles hero still: the finished character dressed, in a three-point studio (980k-vertex body, 110k hair strands, procedural clothes)",
+   "time": "2026-11-09T00:34:31+10:00",
+   "type": "image",
+   "item": "hero",
+   "hero": true
+  },
   {
    "src": "media/clips/pistol_full.mp4",
    "caption": "Full pistol routine in one take: draw from the pocket, three shots, reload, put it back",
