@@ -68,7 +68,7 @@ def digit(name, base, d, dorsal, lengths, radii, flex, bone_prefix):
 def hand():
     R = HAND.R
     parts = [
-        Ellipsoid(H(0, 0.018, 0.0), (0.0270, 0.0200, 0.0160), R),                     # carpus
+        Ellipsoid(H(0, 0.014, 0.0), (0.0275, 0.0240, 0.0170), R),                     # carpus
         Ellipsoid(H(0.000, 0.056, 0.0), (0.0440, 0.0400, 0.0145), R),                 # palm
         RoundBox(H(0.000, 0.060, 0.001), (0.0395, 0.0300, 0.0108), R, rr=0.0090),
         Ellipsoid(H(0.0235, 0.0360, -0.0115), (0.0175, 0.0260, 0.0130), R),            # thenar eminence
