@@ -410,101 +410,219 @@ def backflip(skel, seconds=3.3):
     return out
 
 
-# ------------------------------------------------------------------ physics clips (ragdoll)
-def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None, face=None):
-    """Simulate from an animated frame; returns frames keyed from the particle state.
-    face(i) -> (jaw_open_deg, lid_close 0..1) keeps the face alive on top of the physics."""
-    from .ragdoll import Ragdoll, clamp_fingers, to_rotations
-    rd = Ragdoll(skel, start.W, start.H, prev.W, prev.H)
-    setup(rd)
-    out = []
-    pel_off = start.H["pelvis"] - start.H["root"]
-    for i in range(int(seconds * FPS)):
-        if per_frame:
-            per_frame(rd, i)
-        rd.step()
-        W, P = to_rotations(skel, rd, rd.x, start.W)
-        if face is not None:
-            jaw, lids = face(i)
-            if "jaw" in W:
-                W["jaw"] = W["jaw"] @ axis_angle([1, 0, 0], -jaw)
-            for s in ("l", "r"):
-                if f"lid_upper_{s}" in W:
-                    W[f"lid_upper_{s}"] = W[f"lid_upper_{s}"] @ axis_angle([1, 0, 0], -36.0 * lids)
-        root_head = P - pel_off
-        q, loc = skel.basis(W, root_head - skel.head["root"])
-        Wf, Hf = skel.fk({b: _mat(qq) for b, qq in q.items()}, root_head - skel.head["root"])
-        if clamp_fingers(skel, Wf, Hf):
-            q, loc = skel.basis(Wf, root_head - skel.head["root"])
-            Wf, Hf = skel.fk({b: _mat(qq) for b, qq in q.items()}, root_head - skel.head["root"])
-        out.append(Frame(q, loc, Wf, Hf, {"pelvis": P.copy()}))
-    return out
+# ------------------------------------------------------------------ rigid-body physics (src/rh/physics.py)
+ALL_KINDS = ("lumbar", "thoracic", "neck", "skull", "shoulder", "elbow", "wrist", "hip", "knee", "ankle")
 
 
-def _mat(q):
+def _qmat(q):
     w, x, y, z = q
     return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
                      [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
                      [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
 
 
-def fall(skel, seconds=4.5):
-    """Walk, the right foot catches mid-swing, he pitches forward, braces with his arms, hits the ground."""
-    walk = locomotion(skel, 1.75, WALK)
-    trip_i = len(walk) - 1
-    from .ragdoll import Ragdoll
-
-    def setup(rd):
-        # swing foot caught on an obstacle: pin the right toe briefly
-        rd.pins["toe_r"] = rd.x[rd.idx["toe_r"]].copy()
-        # protective reaction: arms forward and down, head up
-        tgt = rd.x.copy()
-        F, P = rd.pelvis_frame(rd.x)
-        for side, sg in (("l", 1.0), ("r", -1.0)):
-            sh = rd.x[rd.idx[f"sh_{side}"]]
-            tgt[rd.idx[f"el_{side}"]] = sh + F[:, 2] * 0.22 - F[:, 1] * 0.12 + sg * F[:, 0] * 0.08
-            tgt[rd.idx[f"wr_{side}"]] = sh + F[:, 2] * 0.45 - F[:, 1] * 0.25 + sg * F[:, 0] * 0.10
-            tgt[rd.idx[f"fi_{side}"]] = sh + F[:, 2] * 0.62 - F[:, 1] * 0.30 + sg * F[:, 0] * 0.11
-        rd.set_tone(0.03, tgt)
-
-    def per_frame(rd, i):
-        if i == 2:
-            rd.pins.pop("toe_r", None)
-        rd.tone = 0.03 if i < 20 else (0.012 if i < 36 else 0.0)
-        rd.friction = 0.75
-
-    sim = _ragdoll_frames(skel, walk[trip_i], walk[trip_i - 1], seconds - 1.75, setup, per_frame)
-    return walk + sim
+def _rebuild(skel, B, loc_world, extra):
+    W, H = skel.fk(B, loc_world)
+    q, loc = skel.basis(W, loc_world)
+    return Frame(q, loc, W, H, extra)
 
 
-def shot(skel, seconds=4.5):
-    """Standing; a round hits the upper left chest; flinch, stagger, knees give, collapse."""
-    base = idle(skel, 1.2)
+def blend(skel, fa, fb, u):
+    """Pose between two frames: local rotations slerped, root location lerped."""
+    from .physics import qslerp
+    u = float(u)
+    B = {b: _qmat(qslerp(tuple(fa.quats[b]), tuple(fb.quats[b]), u)) for b in skel.order}
+    loc = skel.A["root"] @ ((1 - u) * np.asarray(fa.root_loc) + u * np.asarray(fb.root_loc))
+    return _rebuild(skel, B, loc, dict(fa.extra))
+
+
+def set_face(skel, f, jaw=0.0, lids=0.0):
+    """Open the jaw (deg) and close the upper lids (0..1) on a finished frame."""
+    B = {b: _qmat(q) for b, q in f.quats.items()}
+    B["jaw"] = B["jaw"] @ axis_angle([1, 0, 0], -jaw)
+    for s in ("l", "r"):
+        B[f"lid_upper_{s}"] = B[f"lid_upper_{s}"] @ axis_angle([1, 0, 0], -36.0 * lids)
+    return _rebuild(skel, B, skel.A["root"] @ np.asarray(f.root_loc), f.extra)
+
+
+def hand_frame(y, z):
+    """World rotation for a hand bone: y distal (toward the fingers), z dorsal (back of the hand)."""
+    y = nrm(y)
+    z = nrm(np.asarray(z, float) - y * np.dot(z, y))
+    return np.stack([np.cross(y, z), y, z], 1)
+
+
+def physical(skel, frames, setup=None, per_frame=None):
+    """Run a kinematic clip through the rigid-body layer (pelvis and legs follow the clip; trunk,
+    head and arms are driven toward it, so they carry weight, lag and follow through)."""
+    from .physics import track
+    return track(skel, frames, setup, per_frame)[0]
+
+
+def _follow_pelvis(frames, start):
+    """Camera target for simulated frames: the simulated hip centre."""
+    for f in frames[start:]:
+        f.extra = dict(f.extra, pelvis=f.H["pelvis"].copy())
+    return frames
+
+
+def _brace_pose(skel):
+    """Protective reaction to a forward fall: arms thrown forward and down with the wrists
+    extended and fingers spread, head up, the caught leg brought through for a rescue step."""
+    p = Pose(skel).root((0.0, 0.0, 0.0), 0.0)
+    p.spine(pitch=12)
+    p.neck(pitch=-32, yaw=12)
+    for side, hip, knee in (("l", 75, 85), ("r", 40, 35)):
+        p.rot(f"thigh_{side}", 0, hip).rot(f"calf_{side}", 0, -knee)
+        p.fingers(side, curl=0.06, spread=10, thumb=0.0)
+    _, _, W, H = p.solve()
+    for side, sg in (("l", 1.0), ("r", -1.0)):
+        sh = H[f"upperarm_{side}"]
+        p.arm(side, sh + np.array([sg * 0.08, -0.44, -0.28]), sh + np.array([sg * 0.35, 0.05, -0.30]),
+              hand_rot=hand_frame([0.0, -1.0, -0.25], [0.0, 0.2, 1.0]))
+    return solve(p)
+
+
+def fall(skel, seconds=4.6, t_trip=1.90):
+    """Walking, the left foot catches an obstacle mid-swing. After ~0.1 s the arms shoot forward
+    and the caught leg is brought through for a rescue step; it lands short, the knee and both
+    hands hit the ground, the elbows give and the chest goes down. All of it is rigid-body
+    dynamics: the reaction only sets what the muscles aim for and how hard they can pull."""
+    walk = locomotion(skel, t_trip + 1.0 / FPS, WALK)
+    trip = len(walk) - 1
+    brace = _brace_pose(skel)
+    n = int(round(seconds * FPS))
+    react = int(round(0.10 * FPS))
+    refs = walk + [blend(skel, walk[trip], brace, smooth((i - react) / 5.0)) for i in range(1, n - trip)]
+    f0 = walk[trip]
+    toe = f0.H["ball_l"] + f0.W["ball_l"][:, 1] * skel.length["ball_l"]
+
+    def per_frame(sim, i):
+        k = i - trip
+        if k == 1:
+            sim.set_kinematic([b.name for b in sim.B], False)
+            sim.pin("trip", "foot_l", toe, alpha=1e-5)
+            sim.set_tone(("lumbar", "thoracic"), 2.5, 0.8, 1.0, cap=120)
+            sim.set_tone(("neck", "skull"), 4.0, 0.8, 1.0, cap=40)
+            sim.set_tone(("shoulder",), 5.0, 0.7, 1.0, cap=80)
+            sim.set_tone(("elbow",), 5.0, 0.7, 1.0, cap=40)
+            sim.set_tone(("wrist",), 4.0, 0.7, 1.0, cap=15)
+            sim.set_tone(("hip", "knee"), 5.0, 0.8, 0.5, cap=160)
+            sim.set_tone(("ankle",), 3.0, 0.8, 0.5, cap=25)
+        elif k == 1 + int(0.18 * FPS):
+            sim.pins.pop("trip", None)
+        elif k == int(1.0 * FPS):
+            # down: he lets the legs lie, turns his face aside and stays there, stunned
+            for s in ("l", "r"):
+                sim.goal(f"hip_{s}", (5, 0, 0))
+                sim.goal(f"knee_{s}", (12, 0, 0))
+                sim.goal(f"ankle_{s}", (-30, 0, 0))
+            sim.goal("neck", (-5, 0, 30))
+            sim.goal("skull", (-15, 0, 25))
+            sim.set_tone(("hip", "knee", "ankle"), 1.0, 0.9, 0.0, cap=25)
+            sim.set_tone(("lumbar", "thoracic"), 1.2, 0.9, 0.3, cap=40)
+            sim.set_tone(("neck", "skull"), 2.0, 0.9, 0.6, cap=15)
+            sim.set_tone(("shoulder", "elbow", "wrist"), 0.8, 0.9, 0.2, cap=20)
+
+    frames = physical(skel, refs, per_frame=per_frame)
+    return _follow_pelvis(frames, trip)
+
+
+def _flinch_pose(skel):
+    """Startle and guarding around a wound in the upper left chest: trunk curls toward it,
+    shoulders hunch, the right hand clamps onto it, the left arm pulls in."""
+    p = Pose(skel).root((0.0, 0.0, 0.0), 0.0)
+    p.pelvis(pitch=8)
+    p.spine(pitch=24, roll=6, yaw=-10)
+    p.neck(pitch=18, yaw=-8)
+    p.clavicle("l", up=8, fwd=8)
+    p.clavicle("r", up=6, fwd=10)
+    for side in ("l", "r"):
+        p.rot(f"thigh_{side}", 0, 7).rot(f"calf_{side}", 0, -10)
+    p.fingers("r", curl=0.25, thumb=0.2)
+    p.fingers("l", curl=0.55, thumb=0.4)
+    _, _, W, H = p.solve()
+    F = W["spine_04"]                       # chest frame: x his left, y up, z forward
+    wound = H["spine_04"] + F @ np.array([0.075, 0.05, 0.10])
+    p.arm("r", wound + F @ np.array([-0.02, 0.0, 0.04]), H["upperarm_r"] + F @ np.array([-0.3, -0.25, 0.1]),
+          hand_rot=hand_frame(F @ np.array([1.0, 0.25, -0.2]), F @ np.array([0.0, 0.0, 1.0])))
+    p.arm("l", H["upperarm_l"] + F @ np.array([0.05, -0.32, 0.22]), H["upperarm_l"] + F @ np.array([0.3, -0.2, -0.2]))
+    return solve(p)
+
+
+def _slump_pose(skel):
+    """What the failing legs and trunk fold toward: a deep crouch, curled over the wound."""
+    p = Pose(skel).root((0.0, 0.0, 0.0), 0.0)
+    p.spine(pitch=35, roll=12, yaw=-8)
+    p.neck(pitch=30, yaw=-10, roll=8)
+    for side, hip, knee in (("l", 70, 120), ("r", 60, 100)):
+        p.rot(f"thigh_{side}", 0, hip).rot(f"calf_{side}", 0, -knee)
+        p.fingers(side, curl=0.4, thumb=0.3)
+    _, _, W, H = p.solve()
+    F = W["spine_04"]
+    wound = H["spine_04"] + F @ np.array([0.075, 0.05, 0.10])
+    p.arm("r", wound + F @ np.array([-0.02, -0.05, 0.05]), H["upperarm_r"] + F @ np.array([-0.3, -0.25, 0.1]))
+    p.arm("l", H["upperarm_l"] + F @ np.array([0.10, -0.45, 0.15]), H["upperarm_l"] + F @ np.array([0.3, -0.1, -0.3]))
+    return solve(p)
+
+
+def shot(skel, seconds=4.6, t_hit=1.25):
+    """Standing; a round hits the upper left chest. The 3 N s of the bullet barely moves an
+    80 kg man: the visible jolt is his own flinch. The legs hold for 0.2 s, then give: he drops
+    into a sitting collapse, the trunk falls back as consciousness goes and the limbs settle
+    under gravity (rigid-body ragdoll with fading muscle tone)."""
+    base = idle(skel, t_hit)
     hit = len(base) - 1
+    flinch, slump = _flinch_pose(skel), _slump_pose(skel)
+    n = int(round(seconds * FPS))
+    refs = list(base)
+    for i in range(1, n - hit):
+        t = i / FPS
+        f = blend(skel, base[hit], flinch, smooth((t - 0.03) / 0.16))
+        refs.append(blend(skel, f, slump, smooth((t - 0.20) / 0.35)))
 
-    def setup(rd):
-        F, P = rd.pelvis_frame(rd.x)
-        back = -F[:, 2]
-        # a 9 mm round carries ~3 kg m/s: barely moves an 80 kg man; the jolt is his own flinch
-        rd.impulse("chest", back * 0.35 + F[:, 0] * 0.1)
-        rd.impulse("sh_l", back * 0.9)
-        # flinch: right hand to the wound, shoulders hunch, knees soften
-        tgt = rd.x.copy()
-        wound = rd.x[rd.idx["chest"]] + F[:, 2] * 0.11 + F[:, 0] * 0.08 + F[:, 1] * 0.02
-        tgt[rd.idx["wr_r"]] = wound + F[:, 0] * -0.02
-        tgt[rd.idx["fi_r"]] = wound + F[:, 0] * 0.06
-        tgt[rd.idx["el_r"]] = rd.x[rd.idx["sh_r"]] + F[:, 2] * 0.18 - F[:, 1] * 0.20
-        rd.set_tone(0.05, tgt)
+    def per_frame(sim, i):
+        k = i - hit
+        if k == 1:
+            sim.set_kinematic([b.name for b in sim.B], False)
+            chest = sim.bodies["thorax"]
+            sim.impulse(chest, (chest.x[0] + 0.075, chest.x[1] - 0.10, chest.x[2] + 0.06), (0.0, 3.0, 0.0))
+            sim.set_tone(("lumbar", "thoracic"), 5.0, 0.8, 1.0, cap=250)
+            sim.set_tone(("neck", "skull"), 4.0, 0.8, 1.0, cap=40)
+            sim.set_tone(("shoulder", "elbow"), 4.5, 0.7, 1.0, cap=60)
+            sim.set_tone(("wrist",), 4.0, 0.7, 1.0, cap=10)
+            sim.set_tone(("hip",), 8.0, 0.9, 1.0, cap=400)
+            sim.set_tone(("knee",), 8.0, 0.9, 1.0, cap=300)
+            sim.set_tone(("ankle",), k=1400, c=60, comp=0.0, cap=250)      # balance on the feet
+        elif k == int(0.20 * FPS):                                          # the legs give
+            sim.set_tone(("hip_l", "knee_l"), 4.0, 0.9, 0.5, cap=40)
+            sim.set_tone(("hip_r", "knee_r"), 4.0, 0.9, 0.5, cap=70)
+            sim.set_tone(("ankle",), 2.0, 0.9, 0.0, cap=30)
+            sim.set_tone(("lumbar", "thoracic"), 3.0, 0.9, 1.0, cap=120)
+        elif k == int(0.55 * FPS):                                          # sitting, fading
+            sim.set_tone(("hip", "knee", "ankle"), 0.6, 0.9, 0.0, cap=10)
+            sim.set_tone(("lumbar", "thoracic"), 1.2, 0.9, 0.2, cap=40)
+            sim.set_tone(("neck", "skull"), 1.5, 0.9, 0.4, cap=10)
+        elif k == int(0.95 * FPS):                                          # back on the ground
+            sim.limp(("hip", "knee", "ankle"))
+            for s, mag in (("l", 2.0), ("r", 1.5)):                         # knees tip over to his left
+                calf = sim.bodies[f"calf_{s}"]
+                sim.impulse(calf, calf.point(sim.J[f"knee_{s}"].ac), (mag, 0.0, 0.0))
+        elif k == int(1.1 * FPS):
+            sim.set_tone(ALL_KINDS[:7], 0.4, 0.9, 0.0, cap=8)
+        elif k == int(1.7 * FPS):
+            sim.limp(ALL_KINDS)
 
-    def per_frame(rd, i):
-        rd.tone = 0.05 if i < 12 else (0.025 if i < 30 else (0.008 if i < 48 else 0.0))
-
-    # pain: mouth falls open at the hit, eyes squeeze, then half-closed and slack as he goes down
-    face = lambda i: (14.0 * smooth(i / 4.0) * (1 - 0.4 * smooth((i - 30) / 20.0)), 0.9 * smooth(i / 3.0) * (1 - 0.4 * smooth((i - 10) / 12.0)))
-    sim = _ragdoll_frames(skel, base[hit], base[hit - 1], seconds - 1.2, setup, per_frame, face)
-    for f in base:
-        f.extra["pelvis"] = np.array([0.0, 0.0, 0.95])
-    return base + sim
+    frames = physical(skel, refs, per_frame=per_frame)
+    # pain: the mouth falls open at the hit, the eyes squeeze, then half-closed and slack
+    for i in range(hit + 1, n):
+        k = i - hit
+        jaw = 14.0 * smooth(k / 4.0) * (1 - 0.4 * smooth((k - 30) / 20.0))
+        lids = 0.9 * smooth(k / 3.0) * (1 - 0.4 * smooth((k - 10) / 12.0))
+        frames[i] = set_face(skel, frames[i], jaw, lids)
+    for f in frames[:hit + 1]:
+        f.extra = dict(f.extra, pelvis=np.array([0.0, 0.0, 0.95]))
+    return _follow_pelvis(frames, hit + 1)
 
 
 # ------------------------------------------------------------------ crouch
