@@ -844,7 +844,7 @@ class Shoe:
         return self.o * [1, 1, 0] + lat[..., None] * self.ex + fwd[..., None] * self.ey + z[..., None] * UP
 
     def spring(self, fwd):
-        return 0.012 * smoothstep(0.16, 0.25, fwd) ** 1.5 + 0.004 * smoothstep(-0.06, -0.09, fwd)
+        return 0.009 * smoothstep(0.17, 0.25, fwd) ** 1.5 + 0.004 * smoothstep(-0.06, -0.09, fwd)
 
     def collar_z(self, fwd):
         return _pchip([-0.09, -0.07, -0.04, -0.01, 0.015, 0.035], [0.091, 0.086, 0.074, 0.066, 0.068, 0.074])(fwd)
@@ -939,7 +939,8 @@ class Shoe:
         P = np.asarray(P, F)
         lat, fwd, z = self.local(P)
         d = self.f_upper_raw(P)
-        fit = np.maximum(self.G(P) - F(0.0045), (z - self.top_f(fwd) + 0.004).astype(F))
+        g = self.G(P) - F(0.0045)
+        fit = np.where(fwd > 0.024, np.maximum(g, (z - self.top_f(fwd) + 0.004).astype(F)), g)
         d = np.minimum(d, fit)                               # the foot always fits inside
         d = smax(d, -self.cavity(P), F(0.0008))
         # collar opening behind the throat, lacing gap in front of it
@@ -1009,19 +1010,20 @@ class Shoe:
             tubes.append(seg(med[i], lat[i + 1], zm, i % 2 == 0))
             tubes.append(seg(lat[i], med[i + 1], zm, i % 2 == 1))
         # bow on top of the last pair
-        f = self.eyelet_f[-1] - 0.004
+        f = self.eyelet_f[-1] + 0.008
         K = self.world(self.lace_c(f), f, mid_z[-1] + 0.006)
         ex, ey = self.ex, self.ey
         for sgn in (1, -1):
+            K = self._push_out([K], r)[0]
             tubes.append(Tube([lift(med[-1] if sgn < 0 else lat[-1], r), K], r, samples=4))
             loop = [K, K + sgn * 0.016 * ex + 0.004 * ey + 0.006 * UP, K + sgn * 0.034 * ex + 0.002 * ey - 0.004 * UP,
                     K + sgn * 0.030 * ex - 0.010 * ey - 0.008 * UP, K + sgn * 0.012 * ex - 0.008 * ey + 0.0, K]
             tubes.append(Tube(self._push_out(loop, r), r, samples=8))
             end = [K, K + sgn * 0.008 * ex + 0.012 * ey + 0.0, K + sgn * 0.020 * ex + 0.034 * ey - 0.006 * UP,
-                   K + sgn * 0.028 * ex + 0.052 * ey - 0.016 * UP]
+                   K + sgn * 0.026 * ex + 0.046 * ey - 0.006 * UP]
             tubes.append(Tube(self._push_out(end, r), r, samples=8))
             tip = self._push_out([end[-1]], r)[0]
-        knot = self.world(self.lace_c(f), f, mid_z[-1] + 0.0065)
+        knot = self._push_out([self.world(self.lace_c(f), f, mid_z[-1] + 0.0065)], 0.0034)[0]
         from .sdf import Ellipsoid
         tubes.append(Ellipsoid(knot, (0.0052, 0.0042, 0.0034)))
         return tubes
@@ -1030,7 +1032,7 @@ class Shoe:
         from .sdf import catmull_rom
         P = catmull_rom(np.asarray(pts, float), 6)
         for _ in range(30):
-            d = self.solid(P.astype(F)).astype(float)
+            d = np.minimum(self.solid(P.astype(F)), self.G(P.astype(F))).astype(float)
             bad = d < r + 0.0006
             if not bad.any():
                 break
@@ -1557,7 +1559,7 @@ class Jeans:
             lo = c - 0.16; hi = c + 0.16
             V, Q, bmask = sheet(bag_field, bag_cut, lo, hi, h, log=self.log)
             # where the thigh leaves no room the bag lies flat against it: drop those faces
-            ok = self.G(V[Q].mean(axis=1).astype(F)) > 0.0024
+            ok = self.G(V[Q].mean(axis=1).astype(F)) > 0.0042
             V, Q, used = compact(V, Q, ok)
             ea, eb = boundary_edges(Q)
             bmask = np.zeros(len(V), bool); bmask[ea] = True; bmask[eb] = True

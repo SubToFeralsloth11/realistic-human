@@ -105,8 +105,8 @@ class N(G):
         dash = self.dashes(s, period, duty)
         return self.mul(row, dash), d
 
-    def bsdf(self):
-        out = self.n("ShaderNodeOutputMaterial")
+    def bsdf(self, target="ALL"):
+        out = self.n("ShaderNodeOutputMaterial", target=target)
         b = self.n("ShaderNodeBsdfPrincipled")
         self.link(b.outputs[0], out.inputs[0])
         return b
@@ -185,7 +185,7 @@ def jersey_material(color=(0.115, 0.118, 0.122), name="CottonJersey"):
 def denim_material(name="Denim"):
     """Indigo 3x1 right-hand twill with slub streaks, whiskers / honeycombs, orange-tan topstitching."""
     mat, g = _new_mat(name)
-    b = g.bsdf()
+    b = g.bsdf("CYCLES")
     u, v = g.attr("u"), g.attr("v")
     side = g.attr("side")
     wear = g.attr("wear")
@@ -251,7 +251,34 @@ def denim_material(name="Denim"):
     bump = g.n("ShaderNodeBump", Strength=0.45, Distance=0.0005)
     g.link(h, bump.inputs["Height"])
     g.link(bump.outputs[0], b.inputs["Normal"])
+    _denim_eevee(g)
     return mat
+
+
+def _denim_eevee(g):
+    """EEVEE has a small per-material vertex-attribute budget (the full tree reads 19): a lean
+    twill + wear + seams tree with 9 attributes, used only by EEVEE."""
+    b = g.bsdf("EEVEE")
+    u, v, side, wear, fold = g.attr("u"), g.attr("v"), g.attr("side"), g.attr("wear"), g.attr("fold")
+    metal, bag, label, sd = g.attr("metal"), g.attr("bag"), g.attr("label"), g.attr("seam")
+    tw = g.frac(g.mul(g.add(g.mul(u, 0.88), g.mul(v, 0.47)), 1.0 / 0.00075))
+    wale = g.smooth(0.0, 0.5, g.absv(g.sub(tw, 0.5)))
+    slub = g.noise(g.combine(g.mul(u, 1400.0), g.mul(v, 45.0), 0.0), 1.0, 3.0, 0.6)
+    c = g.mix(g.add(g.mul(wale, 0.40), g.mul(g.sub(slub, 0.5), 0.8)), (0.014, 0.024, 0.062), (0.036, 0.058, 0.118))
+    wtot = g.mx(wear, g.mul(g.smooth(0.05, 0.6, fold), 0.75))
+    c = g.mix(g.math("MINIMUM", g.mul(wtot, 0.7), 0.75), c, (0.12, 0.17, 0.27))
+    row = g.mx(g.line(sd, 0.0015, 0.0005), g.line(sd, -0.0015, 0.0005))
+    c = g.mix(g.mul(row, 0.8), c, (0.62, 0.33, 0.085))
+    c = g.mix(g.sub(1.0, side), c, (0.30, 0.33, 0.40))
+    c = g.mix(bag, c, (0.62, 0.60, 0.55))
+    c = g.mix(label, c, (0.30, 0.17, 0.08))
+    c = g.mix(metal, c, (0.80, 0.52, 0.28))
+    g.link(c, b.inputs["Base Color"])
+    g.link(g.lerp(metal, 0.82, 0.28), b.inputs["Roughness"])
+    g.link(metal, b.inputs["Metallic"])
+    bump = g.n("ShaderNodeBump", Strength=0.35, Distance=0.0005)
+    g.link(g.add(g.mul(wale, 0.35), g.mul(row, 0.6)), bump.inputs["Height"])
+    g.link(bump.outputs[0], b.inputs["Normal"])
 
 
 def sneaker_material(name="Sneaker"):
