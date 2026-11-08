@@ -540,7 +540,7 @@ NECK_AXIS = np.array([0.0, 0.03, 0.0])
 # crew-neck hole radius around the neck axis vs psi = atan2(y - 0.03, |x|): front, front-side,
 # side, back-side, back. The neckline is where this vertical cylinder meets the shoulders/chest.
 _HOLE_PSI = np.radians([-90, -45, 0, 45, 90])
-_HOLE_R = np.array([0.094, 0.108, 0.112, 0.092, 0.077])
+_HOLE_R = np.array([0.094, 0.112, 0.121, 0.094, 0.077])
 
 
 def neck_hole(P):
@@ -553,6 +553,10 @@ def neck_hole(P):
 
 def _neck_phi(P):
     return np.arctan2(P[:, 1] - NECK_AXIS[1], P[:, 0])
+
+
+def hole_r(phi):
+    return _pchip(_HOLE_PSI, _HOLE_R)(np.arctan2(np.sin(phi), np.abs(np.cos(phi))))
 
 
 class Shirt:
@@ -571,17 +575,17 @@ class Shirt:
         rh = np.stack([hull_radius(rb[i], tc.th) for i in range(len(tc.s))])
         z = tc.s[:, None]
         back = smoothstep(-0.3, 1.0, np.sin(tc.th))[None, :]               # +y side
-        e = np.interp(z, [0.86, 0.95, 1.05, 1.18, 1.30, 1.44], [0.016, 0.017, 0.014, 0.009, 0.006, 0.005])
+        e = np.interp(z, [0.86, 0.95, 1.05, 1.18, 1.30, 1.44], [0.022, 0.022, 0.017, 0.010, 0.006, 0.005])
         e = e + 0.004 * back * smoothstep(1.28, 1.05, z)
         base = rh + e
-        R = drape_down(base[::-1], 0.10, tc.ds)[::-1]
+        R = drape_down(base[::-1], 0.07, tc.ds)[::-1]
         R = periodic_smooth(R, 1.5, 2.0)
         slack = np.maximum(R - (rb + 0.004), 0)
         u = (tc.th * 0.16)[None, :]
         pat = fold_noise(u + 0 * z, z + 0 * u, [(0.09, 1.0, 0.25), (0.13, 0.8, 0.35), (0.055, 0.45, 0.2)], seed=3)
         w = smoothstep(1.26, 1.02, z)
         pat = np.sign(pat) * np.abs(pat) ** 0.75
-        amp = np.clip(0.8 * slack, 0, 0.012) * w
+        amp = np.clip(0.8 * slack, 0, 0.015) * w
         self.t_fold = np.where(pat > 0, amp * pat, 0.45 * amp * pat)      # ridges stand out, valleys stay off the skin
         R = R + self.t_fold
         self.tc, self.t_R, self.t_rb = tc, R, rb
@@ -608,6 +612,18 @@ class Shirt:
         self.sc, self.s_R = sc, Rs
         self.f_sleeve_raw = sc.field(Rs)
         self.jeans = jeans
+        # ---------------- crew collar: a rib band standing up on a cylinder around the neck base.
+        # It starts where the cylinder meets the shirt on the shoulders/chest and rises 17 mm.
+        phi = np.linspace(-np.pi, np.pi, 181)
+        Rc = hole_r(phi) + 0.0025
+        zz = np.arange(1.40, 1.62, 0.001)
+        Pq = np.stack([np.repeat(Rc * np.cos(phi), len(zz)), np.repeat(NECK_AXIS[1] + Rc * np.sin(phi), len(zz)),
+                       np.tile(zz, len(phi))], 1).astype(F)
+        a = (self.Gs(Pq) - F(0.0034)).reshape(len(phi), len(zz))
+        first = np.argmax(a >= 0, axis=1)            # first height (going up) where the cylinder leaves the shirt
+        self.collar_phi, self.collar_top = phi, ndimage.gaussian_filter1d(zz[first] + 0.016, 3, mode="wrap")
+        self.log(f"  collar top z: front {np.interp(-np.pi / 2, phi, self.collar_top):.3f} side "
+                 f"{np.interp(0.0, phi, self.collar_top):.3f} back {np.interp(np.pi / 2, phi, self.collar_top):.3f}")
         self.log(f"  shirt charts in {time.time() - t0:.0f}s")
 
     # fields ------------------------------------------------------------------
@@ -645,8 +661,8 @@ class Shirt:
         return out
 
     def ease_close(self, P):
-        collar = smoothstep(0.03, 0.015, neck_hole(P)) * (P[:, 2] > 1.40)
-        return (0.0046 - 0.0012 * collar).astype(F)
+        collar = smoothstep(0.03, 0.012, neck_hole(P)) * (P[:, 2] > 1.40)
+        return (0.0046 - 0.0010 * collar).astype(F)
 
     def outer(self, P):
         P = np.asarray(P, F)
@@ -655,16 +671,15 @@ class Shirt:
         e = smin(a, self.f_torso_c(P), F(0.02))
         e = smin(e, smin(self.f_sleeve(P), self.f_sleeve(Pm), F(0.0)), F(0.018))
         e = e - self.armpit_folds(P)
-        # collar band stands proud of the body fabric
-        nh = neck_hole(P)
-        band = smoothstep(-0.003, 0.0, nh) * smoothstep(0.020, 0.017, nh) * (P[:, 2] > 1.40)
-        e = e - (0.0009 * band).astype(F)
+        # collar band: cylinder wall around the neck, blended into the shoulders
+        cyl = np.maximum(neck_hole(P) - 0.0025, np.maximum(P[:, 2] - self.neck_top(P) - 0.01, 1.40 - P[:, 2]))
+        e = smin(e, cyl.astype(F), F(0.006))
         # never closer to the skin than thickness + clearance
         e = np.minimum(e, self.G(P) - F(SHIRT["t_collar"] + SHIRT["clear"]))
         if self.jeans is not None:
             low = P[:, 2] < 1.075
             if low.any():
-                e[low] = np.minimum(e[low], self.jeans.outer(P[low]) - F(SHIRT["t_hem"] + 0.0015))
+                e[low] = np.minimum(e[low], self.jeans.clad(P[low]) - F(SHIRT["t_hem"] + 0.0015))
         return e.astype(F)
 
     def sleeve_cut_dist(self, P):
@@ -677,16 +692,15 @@ class Shirt:
             out = np.maximum(out, d.astype(F))
         return out
 
+    def neck_top(self, P):
+        return np.interp(_neck_phi(P), self.collar_phi, self.collar_top)
+
     def neckline(self, n=720):
         """3-D neckline (top edge of the collar) on the outer surface."""
         phi = np.linspace(-np.pi, np.pi, n, endpoint=False)
-        x = np.cos(phi); y = np.sin(phi)
-        R = _pchip(_HOLE_PSI, _HOLE_R)(np.arctan2(y, np.abs(x)))
-        P = np.stack([R * x, NECK_AXIS[1] + R * y, np.full(n, 1.62)], 1)
-        for _ in range(80):
-            d = self.outer(P.astype(F)).astype(float)
-            P[:, 2] -= np.maximum(np.minimum(d, 0.01) * 0.8, 1e-4) * (d > 1e-4)
-        return P
+        R = hole_r(phi) + 0.0025
+        P = np.stack([R * np.cos(phi), NECK_AXIS[1] + R * np.sin(phi), np.interp(phi, self.collar_phi, self.collar_top)], 1)
+        return project_curve(self.outer, P)
 
     def collar_dist(self, V):
         if not hasattr(self, "_neck"):
@@ -701,7 +715,7 @@ class Shirt:
     def cut(self, P):
         P = np.asarray(P, F)
         c = self.hem_z(P) - P[:, 2]
-        c = np.maximum(c, np.minimum(-neck_hole(P), P[:, 2] - 1.40))
+        c = np.maximum(c, np.minimum(P[:, 2] - self.neck_top(P), 0.03 - neck_hole(P)))
         c = np.maximum(c, self.sleeve_cut_dist(P))
         return c.astype(F)
 
@@ -798,7 +812,7 @@ class Shoe:
         fw = [-0.082, -0.065, -0.035, 0.000, 0.040, 0.080, 0.120, 0.150, 0.180, 0.205, 0.226, 0.238]
         latp = [0.022, 0.033, 0.039, 0.043, 0.049, 0.055, 0.059, 0.057, 0.047, 0.033, 0.018, 0.006]
         latn = [0.022, 0.030, 0.035, 0.039, 0.043, 0.047, 0.055, 0.057, 0.055, 0.049, 0.038, 0.024]
-        top = [0.112, 0.114, 0.112, 0.108, 0.102, 0.090, 0.068, 0.058, 0.052, 0.047, 0.040, 0.030]
+        top = [0.112, 0.114, 0.112, 0.108, 0.102, 0.089, 0.063, 0.054, 0.048, 0.043, 0.036, 0.028]
         self.top_f = _pchip(fw, top)
         self.latp_f = _pchip(fw, latp); self.latn_f = _pchip(fw, latn)
         a = self.o + self.F0 * self.ey + (self.ZAX - self.o[2]) * UP
@@ -925,7 +939,8 @@ class Shoe:
         P = np.asarray(P, F)
         lat, fwd, z = self.local(P)
         d = self.f_upper_raw(P)
-        d = np.minimum(d, self.G(P) - F(0.0045))          # the foot always fits inside
+        fit = np.maximum(self.G(P) - F(0.0045), (z - self.top_f(fwd) + 0.004).astype(F))
+        d = np.minimum(d, fit)                               # the foot always fits inside
         d = smax(d, -self.cavity(P), F(0.0008))
         # collar opening behind the throat, lacing gap in front of it
         d = smax(d, np.where(fwd < 0.028, z - self.collar_z(fwd), -1.0).astype(F), F(0.002))
@@ -1157,7 +1172,6 @@ JEANS = dict(
     facing_r=0.011,                 # how far the facing sits below the panel at the mouth
     bag_depth=0.034,                # pocket bag interior target (clamped by the skin)
     bulge=0.019,                    # extra room over the front pockets (bag + pistol)
-    hem_floor=0.032,
 )
 R_REF = 0.165                       # metres per radian around the pelvis (arc-length proxy)
 PELVIS_O = np.array([0.0, 0.012, 0.0])
@@ -1299,7 +1313,23 @@ class Jeans:
     def outer(self, P):
         P = np.asarray(P, F)
         e = self.nominal(P) - self.overlays(P).astype(F)
-        return np.minimum(e, self.G(P) - F(JEANS["t"] + JEANS["clear"])).astype(F)
+        e = np.minimum(e, self.G(P) - F(JEANS["t"] + JEANS["clear"]))
+        # the hem rests on the shoe: near the ankle the fabric wraps over the shoe surface
+        low = P[:, 2] < 0.16
+        if low.any() and self.shoe is not None:
+            Q = P[low]
+            rho = np.minimum(self.lc.coords(Q)[2], self.lc.coords(Q * np.array([-1, 1, 1], F))[2])
+            w = np.where(rho < 0.085, self.shoe_d(Q) - F(JEANS["t_hem"] + 0.0006), 1.0).astype(F)
+            e[low] = smin(e[low], w, F(0.004))
+        return e.astype(F)
+
+    def hem_z(self, P):
+        """Leg hem height: resting on the laces at the front, on the heel counter at the back."""
+        sg = np.where(P[:, 0] >= 0, 1.0, -1.0).astype(F)
+        s, th, rho = self.lc.coords(P * np.stack([sg, np.ones_like(sg), np.ones_like(sg)], 1))
+        front = np.maximum(np.cos(th - np.pi / 2), 0) ** 1.5
+        back = np.maximum(np.cos(th + np.pi / 2), 0) ** 2
+        return 0.050 + 0.046 * front + 0.040 * back + 0.003 * np.sin(3 * th + 1.0)
 
     def shoe_d(self, P):
         out = np.full(len(P), 1.0, F)
@@ -1321,8 +1351,9 @@ class Jeans:
         P = np.asarray(P, F)
         th, ab, v = self.pel(P)
         c = P[:, 2] - jeans_top_z(th)
-        c = np.maximum(c, JEANS["hem_floor"] - P[:, 2])
-        c = np.maximum(c, 0.0025 - self.shoe_d(P))
+        low = P[:, 2] < 0.3
+        c = np.maximum(c, np.where(low, self.hem_z(P) - P[:, 2], -1.0))
+        c = np.maximum(c, 0.0004 - self.shoe_d(P))
         c = np.maximum(c, self.slit(P))
         return c.astype(F)
 
@@ -1463,8 +1494,8 @@ class Jeans:
             front = np.cos(angdiff(lth, np.pi / 2))
             out = np.maximum(out, 0.45 * smoothstep(0.2, 0.9, front) * np.exp(-((s - 0.18) / 0.12) ** 2) * (P[:, 0] * sg > 0))
             out = np.maximum(out, 0.40 * smoothstep(0.3, 0.9, front) * np.exp(-((s - 0.44) / 0.05) ** 2) * (P[:, 0] * sg > 0))
-            hc = np.abs(np.sin(2 * np.pi * (s / 0.019)))
-            out = np.maximum(out, 0.6 * smoothstep(0.75, 0.95, hc) * smoothstep(0.2, 0.75, -front) * np.exp(-((s - 0.455) / 0.03) ** 2) * (P[:, 0] * sg > 0))
+            hc = np.abs(np.sin(2 * np.pi * (s / 0.019 + 0.25 * np.sin(2.0 * lth + 0.7 * sg))))
+            out = np.maximum(out, 0.32 * smoothstep(0.8, 0.97, hc) * smoothstep(0.2, 0.75, -front) * np.exp(-((s - 0.455) / 0.03) ** 2) * (P[:, 0] * sg > 0))
         seat = np.exp(-((v - 0.16) / 0.06) ** 2) * smoothstep(0.5, 0.95, np.cos(th)) * np.exp(-((np.abs(ab) - 0.08) / 0.07) ** 2)
         out = np.maximum(out, 0.40 * seat)
         return np.clip(out, 0, 1)
@@ -1516,9 +1547,7 @@ class Jeans:
                 r = self.facing_r(a, v)
                 prof = smoothstep(0.0, 0.035, -self.bag_outline(a, v))
                 D = JEANS["t"] + 0.0012 + np.maximum(JEANS["bag_depth"] * prof, r + JEANS["t"] + 0.0025)
-                f = self.nominal(P) + D.astype(F)
-                f = np.minimum(f, self.G(P) - F(0.0011 + 0.0012))
-                return f
+                return self.nominal(P) + D.astype(F)
 
             def bag_cut(P, side=side):
                 P = np.asarray(P, F)
@@ -1527,6 +1556,11 @@ class Jeans:
             c = self.av_point(0.066, 0.108, side)[0]
             lo = c - 0.16; hi = c + 0.16
             V, Q, bmask = sheet(bag_field, bag_cut, lo, hi, h, log=self.log)
+            # where the thigh leaves no room the bag lies flat against it: drop those faces
+            ok = self.G(V[Q].mean(axis=1).astype(F)) > 0.0024
+            V, Q, used = compact(V, Q, ok)
+            ea, eb = boundary_edges(Q)
+            bmask = np.zeros(len(V), bool); bmask[ea] = True; bmask[eb] = True
             VV, faces, sd = thicken(V, Q, bmask, 0.0010)
             parts.append(Part(VV, faces, {"bag": 1.0, "side": sd, "u": 0.0, "v": 0.0}))
             if side == 1:
@@ -1576,10 +1610,11 @@ class Jeans:
         a = np.interp(u, L, corners[:, 0]); v = np.interp(u, L, corners[:, 1])
         return self.back_av_point(a, v, side, lambda P: (self.outer(P) - F(0.0013)).astype(F))
 
-    def hardware(self, h):
+    def hw_nodes(self):
+        """Belt loops (3 boxes each) and metal (button, rivets) as SDF nodes; cached."""
+        if hasattr(self, "_hw"):
+            return self._hw
         from .sdf import Capsule, Ellipsoid, RoundBox, Union, rot_from_axes
-        parts = []
-        # belt loops
         loops = []
         for th in np.radians([-152, 152, -98, 98, -32, 32, 0.0]):
             zc = jeans_top_z(th) - JEANS["wb_h"] * 0.5
@@ -1589,31 +1624,46 @@ class Jeans:
             up = np.cross(n, tv)
             R = rot_from_axes(x=tv, y=up)
             hl = JEANS["wb_h"] * 0.5 + 0.004
-            loops.append(RoundBox(p0 + n * 0.0030, (0.0052, hl, 0.0009), R, rr=0.0007))
+            boxes = [RoundBox(p0 + n * 0.0030, (0.0052, hl, 0.0009), R, rr=0.0007)]
             for e in (1, -1):
-                loops.append(RoundBox(p0 + up * e * (hl - 0.0016) + n * 0.0016, (0.0052, 0.0019, 0.0017), R, rr=0.0007))
-        for lp in range(0, len(loops), 3):
-            u = Union(loops[lp:lp + 3])
-            def f(P, u=u):
-                return u._eval(np.asarray(P, F), 0.01)
-            prt = solid_part(f, u.lo - 0.003, u.hi + 0.003, h * 0.45)
-            parts.append(Part(prt.V, prt.faces, {"side": 1.0, "u": prt.V[:, 0] * 1.0, "v": prt.V[:, 2] * 1.0,
-                                                  "wear": 0.35}))
-        # button, rivets (pocket mouth ends)
+                boxes.append(RoundBox(p0 + up * e * (hl - 0.0016) + n * 0.0016, (0.0052, 0.0019, 0.0017), R, rr=0.0007))
+            loops.append(Union(boxes))
         metal = []
         p0 = self.surf_point(np.array([np.pi]), jeans_top_z(np.pi) - 0.0195)[0]
         n = self.normal(p0[None])[0]
         R = rot_from_axes(x=np.cross(UP, n), y=UP)
-        metal.append(Capsule(p0 + n * 0.0012, p0 + n * 0.0030, 0.0072))
-        metal.append(Ellipsoid(p0 + n * 0.0034, (0.0068, 0.0068, 0.0022), R))
-        self.rivets = []
+        metal.append(Union([Capsule(p0 + n * 0.0012, p0 + n * 0.0030, 0.0072),
+                            Ellipsoid(p0 + n * 0.0034, (0.0068, 0.0068, 0.0022), R)]))
+        rivets = []
         for side in (1, -1):
             for a, v in ((JEANS["scoop_a"] + 0.002, 0.004), (0.004, JEANS["scoop_v"] + 0.004)):
                 p = self.av_point(a, v, side)[0]
                 nn = self.normal(p[None])[0]
                 Rr = rot_from_axes(x=np.cross(UP, nn), y=UP)
                 metal.append(Ellipsoid(p + nn * 0.0004, (0.0036, 0.0036, 0.0020), Rr))
-                self.rivets.append(p)
+                rivets.append(p)
+        self._hw = (loops, metal, rivets)
+        return self._hw
+
+    def clad(self, P):
+        """Outer envelope including loops and hardware (what the shirt must clear)."""
+        P = np.asarray(P, F)
+        e = self.outer(P)
+        loops, metal, _ = self.hw_nodes()
+        from .sdf import evaluate
+        for n in loops + metal:
+            e = np.minimum(e, evaluate(n, P, 0.005))
+        return e
+
+    def hardware(self, h):
+        parts = []
+        loops, metal, self.rivets = self.hw_nodes()
+        for u in loops:
+            def f(P, u=u):
+                return u._eval(np.asarray(P, F), 0.01)
+            prt = solid_part(f, u.lo - 0.003, u.hi + 0.003, h * 0.45)
+            parts.append(Part(prt.V, prt.faces, {"side": 1.0, "u": prt.V[:, 0] * 1.0, "v": prt.V[:, 2] * 1.0,
+                                                  "wear": 0.35}))
         for m in metal:
             def f(P, m=m):
                 return m._eval(np.asarray(P, F), 0.01)
@@ -1662,6 +1712,6 @@ class Jeans:
             mouth_gap=float(JEANS["facing_r"] - JEANS["t"]),
             bag_interior_thickness_at_centre=float(r - inner),
             bag_size_wh=[0.148, 0.240],
-            rivets=[p.tolist() for p in self.rivets[:2]],
+            rivets=[p.tolist() for p in self.hw_nodes()[2][:2]],
             note="body-frame metres (+Z up, faces -Y); add sole lift %.3f to z in the final scene" % SOLE_LIFT,
         )

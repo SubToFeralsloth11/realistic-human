@@ -43,6 +43,11 @@ class N(G):
             return n.outputs[0]
         return v
 
+    def lerp(self, f, a, b):
+        """Scalar a + f * (b - a); a, b may be numbers or sockets."""
+        return self.add(a, self.mul(f, self.sub(b, a))) if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) \
+            else self.add(a, self.mul(f, b - a))
+
     def add(self, a, b): return self.math("ADD", a, b)
     def sub(self, a, b): return self.math("SUBTRACT", a, b)
     def mul(self, a, b): return self.math("MULTIPLY", a, b)
@@ -166,7 +171,7 @@ def jersey_material(color=(0.115, 0.118, 0.122), name="CottonJersey"):
     b.inputs["Sheen Tint"].default_value = (0.9, 0.9, 0.9, 1)
     b.inputs["Specular IOR Level"].default_value = 0.3
     # height: knit (body) or rib (collar), seams sunk, stitches proud, hem allowance raised
-    h = g.mix(in_collar, knit, rib)
+    h = g.lerp(in_collar, knit, rib)
     h = g.add(g.mul(h, 0.5), g.mul(stitch, 0.6))
     h = g.sub(h, g.mul(seam_line, 0.8))
     h = g.add(h, g.mul(g.smooth(0.0255, 0.0235, hem), 0.4))
@@ -196,12 +201,12 @@ def denim_material(name="Denim"):
     slub = g.noise(sl, 1.0, 4.0, 0.6)
     weft = g.combine(g.mul(u, 70.0), g.mul(v, 900.0), 0.0)
     wnoise = g.noise(weft, 1.0, 2.0, 0.5)
-    indigo = (0.020, 0.034, 0.085)
-    light = (0.070, 0.105, 0.190)
-    faded = (0.20, 0.27, 0.40)
-    white = (0.55, 0.58, 0.62)
-    c = g.mix(g.add(g.mul(wale, 0.45), g.mul(g.sub(slub, 0.5), 0.9)), indigo, light)
-    c = g.mix(g.mul(g.smooth(0.6, 0.8, wnoise), 0.25), c, white)
+    indigo = (0.014, 0.024, 0.062)
+    light = (0.036, 0.058, 0.118)
+    faded = (0.12, 0.17, 0.27)
+    white = (0.30, 0.33, 0.38)
+    c = g.mix(g.add(g.mul(wale, 0.40), g.mul(g.sub(slub, 0.5), 0.8)), indigo, light)
+    c = g.mix(g.mul(g.smooth(0.55, 0.85, wnoise), 0.08), c, white)
     st1, sd = g.stitch_rows("seam", 0.0034, 0.78, 0.00042)
     st2, pd = g.stitch_rows("pk", 0.0032, 0.78, 0.00042)
     wbd, hem, ptop = g.attr("wb"), g.attr("hem"), g.attr("ptop")
@@ -219,7 +224,7 @@ def denim_material(name="Denim"):
     wtot = g.mx(wear, g.mul(ridge, 0.75))
     wtot = g.mx(wtot, g.mul(edge, 0.7))
     wtot = g.mul(wtot, g.add(0.55, g.mul(wear_n, 0.9)))
-    c = g.mix(g.math("MINIMUM", g.mul(wtot, 0.85), 0.85), c, faded)
+    c = g.mix(g.math("MINIMUM", g.mul(wtot, 0.75), 0.75), c, faded)
     # topstitching (orange-tan) for both seam families
     # seam allowances / felled seams show as raised, abraded ridges
     allow = g.mul(g.smooth(0.0085, 0.006, g.absv(sd)), g.smooth(0.0, 0.0012, g.absv(sd)))
@@ -232,11 +237,11 @@ def denim_material(name="Denim"):
     c = g.mix(leather, c, (0.30, 0.17, 0.08))
     c = g.mix(metal, c, (0.80, 0.52, 0.28))
     g.link(c, b.inputs["Base Color"])
-    rough = g.mix(stitch, 0.82, 0.6)
-    rough = g.mix(metal, rough, 0.28)
+    rough = g.lerp(stitch, 0.82, 0.6)
+    rough = g.lerp(metal, rough, 0.28)
     g.link(rough, b.inputs["Roughness"])
     g.link(metal, b.inputs["Metallic"])
-    b.inputs["Sheen Weight"].default_value = 0.25
+    b.inputs["Sheen Weight"].default_value = 0.12
     b.inputs["Sheen Roughness"].default_value = 0.4
     h = g.add(g.mul(wale, 0.35), g.mul(g.sub(slub, 0.5), 0.25))
     h = g.add(h, g.mul(stitch, 1.0))
@@ -287,12 +292,12 @@ def sneaker_material(name="Sneaker"):
     c = g.mix(lining, c, lining_c)
     c = g.mix(g.mul(eyelet, 0.7), c, (0.45, 0.44, 0.41))
     c = g.mix(g.mul(seam_line, 0.4), c, (0.35, 0.34, 0.31))
-    c = g.mix(g.mul(st, g.sub(1.0, sole)), c, (0.88, 0.87, 0.83))
+    c = g.mix(g.mul(st, 0.85), c, (0.60, 0.58, 0.54))
     c = g.mix(lace, c, lace_c)
     g.link(c, b.inputs["Base Color"])
-    rough = g.mix(sole, 0.42, 0.62)
-    rough = g.mix(lace, rough, 0.9)
-    rough = g.mix(lining, rough, 0.95)
+    rough = g.lerp(sole, 0.42, 0.62)
+    rough = g.lerp(lace, rough, 0.9)
+    rough = g.lerp(lining, rough, 0.95)
     rough = g.add(rough, g.mul(grain, 0.06))
     g.link(rough, b.inputs["Roughness"])
     b.inputs["Coat Weight"].default_value = 0.0
@@ -370,7 +375,7 @@ def preview(prefix, samples=96):
     for ob in [body, *objs.values()]:
         ob.parent = lift
     C.setup_cycles(samples=samples, res=(1100, 1500))
-    bpy.context.scene.view_settings.exposure = -0.9
+    bpy.context.scene.view_settings.exposure = -1.5
     C.world_color((0.30, 0.30, 0.32), 0.35)
     C.studio_lights(target=(0, -0.2, 1.0))
     C.ground(color=(0.25, 0.25, 0.26))
@@ -383,7 +388,7 @@ def preview(prefix, samples=96):
     pk = _pocket()
     tgt = Vector(pk["opening_centre"]) + Vector((0, 0, SOLE_LIFT)) if pk else Vector((-0.15, -0.08, 0.95))
     cam.data.lens = 85
-    C.orbit_camera(cam, tgt, 0.75, -28, 8)
+    C.orbit_camera(cam, tgt + Vector((0, 0, -0.02)), 0.62, -62, 6)
     C.render(f"{prefix}_pocket.png")
     C.orbit_camera(cam, Vector((-0.11, -0.06, 0.07)), 0.75, -40, 18)
     C.render(f"{prefix}_shoe.png")
