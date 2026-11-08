@@ -107,7 +107,7 @@ def main():
         if shot == "full":
             scene.render.resolution_x, scene.render.resolution_y = 1200, 1600
             cam.data.lens = 55
-            C.orbit_camera(cam, (0.0, 0.0, 0.93), 3.7, 28, 3)
+            C.orbit_camera(cam, (0.0, 0.0, 0.95), 3.7, 28, 9)     # camera near eye height, not under the chin
             cam.data.dof.use_dof = False
         elif shot == "portrait":
             scene.render.resolution_x, scene.render.resolution_y = 1200, 1500
