@@ -65,7 +65,12 @@ Honest about what "from scratch" reaches:
 - No cloth simulation: garments are skinned, so they do not swing or slide on the body. A hand
   or the pistol entering the pocket passes through the denim.
 - The face has jaw, eyelid and gaze controls but no full expression rig (no FACS shapes).
-- The animation previews use EEVEE for speed; the Cycles stills show the intended shading.
+- Hands have no knuckle creases or skin wrinkles, so they read as smooth in close-up; the support
+  hand's thumb rides the slide in the aiming pose.
+- A faint line remains down the right side of the neck in raking light, and the sneaker uppers
+  have two small openings near the toe box.
+- The animation previews use EEVEE for speed (with the stubble carried by the skin shader, since
+  EEVEE draws strands too thick); the Cycles stills show the intended shading.
 
 ## Build
 
