@@ -185,9 +185,17 @@ def _plane_through(a, b, c, outside_point):
     return Plane(n, d)
 
 
+# Lid geometry in eye-local offsets (x mirrored per side): canthi and the two margin apexes.
+LID_R = EYE_R + 0.0022
+LID_CM = (-0.0145, -0.0035, -0.0010)    # medial canthus
+LID_CL = (0.0142, 0.0040, 0.0030)       # lateral canthus (positive canthal tilt)
+LID_TU = (-0.0010, 0.0037)              # upper margin apex (x, z): covers ~2 mm of the iris
+LID_TL = (0.0015, -0.0059)              # lower margin low point at the limbus
+
+
 def eye_parts(side=1):
     E = hp(side * EYE_X, 0, 0)
-    R_lid = EYE_R + 0.0022
+    R_lid = LID_R
 
     def e(x, y, z):
         return E + np.array([side * x, y, z])
@@ -195,10 +203,10 @@ def eye_parts(side=1):
     def on_shell(x, z, r=R_lid):
         return e(x, -np.sqrt(r * r - x * x - z * z), z)
 
-    cm = e(-0.0145, -0.0035, -0.0010)   # medial canthus
-    cl = e(0.0142, 0.0040, 0.0030)      # lateral canthus (positive canthal tilt)
-    tu = on_shell(-0.0010, 0.0043)      # upper lid apex, covers ~1.5 mm of the iris
-    tl = on_shell(0.0015, -0.0059)      # lower lid low point at the limbus
+    cm = e(*LID_CM)
+    cl = e(*LID_CL)
+    tu = on_shell(*LID_TU)
+    tl = on_shell(*LID_TL)
     up = _plane_through(cm, cl, tu, E + [0, 0, 0.03])
     lo = _plane_through(cm, cl, tl, E - [0, 0, 0.03])
     # bound the fissure between the canthi so the cut cannot run past the eye corners

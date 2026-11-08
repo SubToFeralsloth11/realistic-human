@@ -39,10 +39,10 @@ def _beard(q, world_z):
     x, y, z = q[:, 0], q[:, 1], q[:, 2]
     ax = np.abs(x)
     # upper boundary across the cheek: low under the nose, rising to the sideburn at the ear
-    zline = np.interp(ax, [0.0, 0.020, 0.030, 0.045, 0.060, 0.070], [-0.049, -0.050, -0.045, -0.030, -0.008, 0.012])
+    zline = np.interp(ax, [0.0, 0.020, 0.030, 0.045, 0.058, 0.068], [-0.049, -0.050, -0.046, -0.034, -0.012, 0.010])
     top = 1 - smoothstep(zline - 0.004, zline + 0.004, z)
-    ahead_of_ear = 1 - smoothstep(0.055, 0.068, y)
-    neck_line = smoothstep(O[2] - 0.170, O[2] - 0.150, world_z)
+    ahead_of_ear = 1 - smoothstep(0.035, 0.055, y)
+    neck_line = smoothstep(O[2] - 0.125, O[2] - 0.110, world_z)     # beard neckline under the jaw
     return top * ahead_of_ear * neck_line
 
 
@@ -52,9 +52,10 @@ def _scalp(q, world_z):
     # front hairline with slight temple recession; behind the ears it drops to the nape
     zh = 0.072 + 0.012 * smoothstep(0.015, 0.045, ax) - 0.004 * smoothstep(0.045, 0.06, ax)
     front = smoothstep(zh - 0.004, zh + 0.004, z)
-    side_line = np.where(y > 0.055, -0.060, 0.030 - 0.5 * np.clip(y - 0.0, 0, None))
+    # temple hairline descends in front of the ear into the sideburn (front edge ~2 cm before the tragus)
+    side_line = np.where(y > 0.055, -0.060, 0.026 - 0.55 * np.clip(y - 0.015, 0, None))
     side = smoothstep(side_line - 0.004, side_line + 0.004, z)
-    behind = smoothstep(0.010, 0.030, y)
+    behind = smoothstep(-0.008, 0.012, y)
     nape = smoothstep(O[2] - 0.085, O[2] - 0.070, world_z)
     above_ear = np.maximum(front, side * behind) * nape
     return np.where(z > 0.10, 1.0, above_ear)

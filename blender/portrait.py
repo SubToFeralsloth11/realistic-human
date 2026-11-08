@@ -20,7 +20,7 @@ import skin  # noqa: E402
 def lights(target):
     t = Vector(target)
     C.area_light("Key", t + Vector((-1.0, -1.25, 0.55)), t, 55, 1.2, (1.0, 0.94, 0.86))
-    C.area_light("Fill", t + Vector((1.4, -0.9, 0.05)), t, 9, 1.6, (0.86, 0.92, 1.0))
+    C.area_light("Fill", t + Vector((1.4, -0.9, 0.05)), t, 6, 1.0, (0.86, 0.92, 1.0))
     C.area_light("Rim", t + Vector((0.6, 1.2, 0.7)), t, 45, 0.5, (1.0, 0.96, 0.9))
     C.area_light("Top", t + Vector((0.0, 0.2, 1.4)), t, 6, 1.5, (1.0, 1.0, 1.0))
 

@@ -171,7 +171,7 @@ def relief():
         *bump_tube([(0, 0.150, 0.980), (0, 0.145, 0.900), (0, 0.130, 0.840)], 0.008, 0.016, -0.0080),     # gluteal cleft
         Bump((0, 0.125, 1.400), (0.070, 0.030, 0.100), 0.0030),                                           # mid trapezius
         Bump((0, -0.068, 1.462), (0.012, 0.012, 0.012), -0.0040),                                         # suprasternal notch
-        Bump((0, -0.058, 1.545), (0.008, 0.008, 0.012), 0.0040),                                          # thyroid prominence
+        Bump((0, -0.054, 1.540), (0.011, 0.010, 0.016), 0.0025),                                          # thyroid prominence
     ]
     return left + [b.mirrored() for b in left] + mid
 

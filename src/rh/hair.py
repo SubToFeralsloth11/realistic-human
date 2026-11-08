@@ -91,26 +91,34 @@ def grow(prog, roots, nrm, comb, length, lift, n_pts, offset0, volume, rng, curl
     return pts
 
 
-def scalp(prog, verts, tris, mask, rng, count=90000):
-    roots, dens = sample_roots(verts, tris, mask, count, rng)
+def _pack(pts, r_root, r_tip):
+    n, k, _ = pts.shape
+    radius = np.linspace(r_root, r_tip, k)[None, :].repeat(n, 0)
+    return pts.reshape(-1, 3).astype(F), np.full(n, k, np.int32), radius.reshape(-1).astype(F)
+
+
+def scalp(prog, verts, tris, mask, rng, count=110000):
+    # irregular hairline: thin out roots near the mask edge with noise so the front is not a ruler line
+    jag = np.sin(verts[:, 0] * 900.0) * np.sin(verts[:, 0] * 2300.0 + 1.3) * 0.5 + 0.5
+    edge = np.clip((mask - 0.25) / 0.6, 0, 1)
+    roots, dens = sample_roots(verts, tris, np.clip(mask * (0.55 + 0.45 * jag) * (0.3 + 0.7 * edge), 0, 1), count, rng)
     nrm = surface_normals(prog, roots)
     q = roots - O
-    # haircut: 45 mm on top, tapering to ~4 mm on the sides and nape (short back and sides)
-    top = np.clip((q[:, 2] - 0.050) / 0.035, 0, 1)
-    side = np.clip((np.abs(q[:, 0]) - 0.055) / 0.015, 0, 1) * (1 - top)
-    back = np.clip((q[:, 1] - 0.110) / 0.04, 0, 1) * (1 - top)
-    length = 0.006 + 0.040 * top * (1 - 0.6 * np.clip(q[:, 1] / 0.12, 0, 1))
-    length = np.where(side + back > 0.5, 0.003 + 0.006 * top, length)
-    length *= rng.uniform(0.8, 1.15, len(roots))
-    # flow: crown whorl at the back of the top; top swept forward and slightly to his right
-    crown = O + [0.010, 0.095, 0.105]
-    away = roots - crown
-    flow = tangent(away + np.array([-0.01, -0.04, -0.02]) * top[:, None], nrm)
-    down = tangent(np.tile([0.0, 0.25, -1.0], (len(roots), 1)), nrm)
+    # textured crop: ~32 mm on top brushed up and back, faded to 2-6 mm on the sides and nape
+    top = np.clip((q[:, 2] - 0.050) / 0.030, 0, 1) * np.clip((0.072 - np.abs(q[:, 0])) / 0.012, 0, 1)
+    length = 0.007 + 0.006 * np.clip((q[:, 2] - 0.0) / 0.05, 0, 1) + 0.024 * top
+    length *= rng.uniform(0.75, 1.2, len(roots))
+    front = O + [0.0, -0.035, 0.070]
+    crown = O + [0.012, 0.100, 0.100]
+    up_back = tangent(roots - front, nrm)                     # from the hairline up and back
+    whorl = tangent(roots - crown, nrm)                        # radiating from the crown
+    wf = np.clip((q[:, 1] - 0.03) / 0.07, 0, 1)[:, None]
+    flow = tangent(up_back * (1 - wf) + whorl * wf + np.array([-0.15, 0.0, 0.0]) * top[:, None], nrm)
+    down = tangent(np.tile([0.0, 0.3, -1.0], (len(roots), 1)), nrm)
     comb = tangent(flow * top[:, None] + down * (1 - top[:, None]), nrm)
-    lift = np.radians(18 + 22 * top + rng.normal(0, 5, len(roots)))
-    pts = grow(prog, roots, nrm, comb, length, lift, 10, 0.0006, 0.0045 * top, rng, clump=0.45, frizz=0.0004)
-    return _pack(pts, 0.000040, 0.000012)
+    lift = np.radians(16 + 46 * top * (1 - 0.5 * wf[:, 0]) + rng.normal(0, 7, len(roots)))
+    pts = grow(prog, roots, nrm, comb, length, lift, 10, 0.0005, 0.007 * top, rng, clump=0.55, frizz=0.0006)
+    return _pack(pts, 0.000036, 0.000010)
 
 
 def eyebrows(prog, verts, tris, mask, rng, count=1500):
@@ -129,20 +137,20 @@ def eyebrows(prog, verts, tris, mask, rng, count=1500):
     return _pack(pts, 0.000045, 0.000015)
 
 
-def stubble(prog, verts, tris, mask, rng, count=45000):
+def stubble(prog, verts, tris, mask, rng, count=32000):
     roots, dens = sample_roots(verts, tris, mask, count, rng)
     nrm = surface_normals(prog, roots)
     comb = tangent(np.tile([0.0, -0.3, -1.0], (len(roots), 1)) + rng.normal(0, 0.35, (len(roots), 3)), nrm)
-    length = rng.uniform(0.0012, 0.0026, len(roots))
-    lift = np.radians(30 + rng.normal(0, 8, len(roots)))
-    pts = grow(prog, roots, nrm, comb, length, lift, 3, 0.0001, 0.0002, rng)
-    return _pack(pts, 0.000055, 0.000030)
+    length = rng.uniform(0.0007, 0.0017, len(roots))
+    lift = np.radians(35 + rng.normal(0, 8, len(roots)))
+    pts = grow(prog, roots, nrm, comb, length, lift, 3, 0.0001, 0.0001, rng)
+    return _pack(pts, 0.000030, 0.000016)
 
 
 def _margin(eye_side, upper, n):
     """Points along the upper or lower lid margin of one eye (same construction as head.eye_parts)."""
     E = headmod.LANDMARKS["eye_l" if eye_side > 0 else "eye_r"]
-    R = headmod.EYE_R + 0.0022
+    R = headmod.LID_R
 
     def e(x, y, z):
         return E + np.array([eye_side * x, y, z])
@@ -150,8 +158,8 @@ def _margin(eye_side, upper, n):
     def on_shell(x, z, r=R):
         return e(x, -np.sqrt(r * r - x * x - z * z), z)
 
-    cm, cl = e(-0.0145, -0.0035, -0.0010), e(0.0142, 0.0040, 0.0030)
-    apex = on_shell(-0.0010, 0.0043) if upper else on_shell(0.0015, -0.0059)
+    cm, cl = e(*headmod.LID_CM), e(*headmod.LID_CL)
+    apex = on_shell(*headmod.LID_TU) if upper else on_shell(*headmod.LID_TL)
     ctrl = 2 * apex - 0.5 * (cm + cl)
     t = np.linspace(0.06, 0.94, n)[:, None]
     p = (1 - t) ** 2 * cm + 2 * (1 - t) * t * ctrl + t ** 2 * cl

@@ -98,7 +98,7 @@ def skin_material(name="Skin", base=SKIN_BASE):
     beard = g.attr("m_beard", (-600, -400))
     col = g.mix(g.math("MULTIPLY", beard, 0.38), col, (base[0] * 0.66, base[1] * 0.62, base[2] * 0.68))
     lip = g.attr("m_lip", (-600, -500))
-    col = g.mix(g.math("MULTIPLY", lip, 0.9), col, (0.40, 0.13, 0.11))
+    col = g.mix(g.math("MULTIPLY", lip, 0.75), col, (0.36, 0.165, 0.14))
     palm = g.attr("m_palm", (-600, -600))
     col = g.mix(g.math("MULTIPLY", palm, 0.6), col, (base[0] * 1.02, base[1] * 0.86, base[2] * 0.80))
     nail = g.attr("m_nail", (-600, -700))

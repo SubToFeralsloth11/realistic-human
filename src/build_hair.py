@@ -32,9 +32,9 @@ def main():
     rng = np.random.default_rng(7)
     out = {}
     groups = {
-        "scalp": lambda: hair.scalp(prog, verts, tris, m["attr_m_scalp"], rng, int(90000 * a.scale)),
+        "scalp": lambda: hair.scalp(prog, verts, tris, m["attr_m_scalp"], rng, int(110000 * a.scale)),
         "brows": lambda: hair.eyebrows(prog, verts, tris, m["attr_m_brow"], rng, int(1500 * a.scale)),
-        "stubble": lambda: hair.stubble(prog, verts, tris, m["attr_m_beard"], rng, int(45000 * a.scale)),
+        "stubble": lambda: hair.stubble(prog, verts, tris, m["attr_m_beard"], rng, int(32000 * a.scale)),
         "lashes": lambda: hair.eyelashes(rng),
     }
     for name, fn in groups.items():
