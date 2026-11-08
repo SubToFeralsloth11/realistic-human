@@ -20,7 +20,7 @@ def _channelbag(ob, name):
     ob.animation_data.action = action
     slot = ob.animation_data.action_slot
     if slot is None:
-        slot = action.slots.new(id_type="OBJECT", name=ob.name)
+        slot = action.slots.new(id_type=getattr(ob, "id_type", "OBJECT"), name=ob.name)
         ob.animation_data.action_slot = slot
     return anim_utils.action_ensure_channelbag_for_slot(action, slot)
 

@@ -32,6 +32,45 @@ def unparent(ob):
     ob.matrix_world = mw
 
 
+def pocket_bulge(jeans, skel, data, frames):
+    """Shape key that pushes the denim out over the pocketed pistol, keyed by how far the gun
+    is from its seat in the pocket. Computed in rest space (garments carry no sole lift)."""
+    origin, _, R = gunplay.load_pocket(C.ROOT)
+    origin = origin - np.array([0.0, 0.0, gunplay.LIFT])
+    me = jeans.data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    mw = np.array(jeans.matrix_world, float)
+    V = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]  # rest-space positions
+    q = (V - origin) @ R                         # gun-local coords: x outward, y muzzle, z sight
+    # silhouette of the slide + grip in the gun's y-z plane, 14 mm soft edge
+    dy = np.maximum(np.maximum(-0.073 - q[:, 1], q[:, 1] - 0.112), 0)
+    dz = np.maximum(np.maximum(-0.095 - q[:, 2], q[:, 2] - 0.040), 0)
+    inside = np.clip(1 - np.hypot(dy, dz) / 0.014, 0, 1)
+    inside = inside * inside * (3 - 2 * inside)
+    nrm = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("normal", nrm)
+    facing = (nrm.reshape(-1, 3) @ mw[:3, :3].T) @ R[:, 0] > 0.2
+    push = np.clip(0.0165 - q[:, 0], 0, 0.02) * inside * facing * (q[:, 0] > -0.02)
+    if not push.any():
+        return
+    out = np.linalg.solve(mw[:3, :3], R[:, 0])
+    if me.shape_keys is None:
+        jeans.shape_key_add(name="Basis", from_mix=False)
+    sk = jeans.shape_key_add(name="GunInPocket", from_mix=False)
+    new = co.reshape(-1, 3) + np.outer(push, out).astype(np.float32)
+    sk.data.foreach_set("co", new.ravel())
+    seat = gunplay.inv(gunplay.bone_M(*skel.fk({}, np.array([0.0, 0.0, gunplay.LIFT])), "thigh_r")) @ \
+        gunplay.M(R, origin + np.array([0.0, 0.0, gunplay.LIFT]))
+    vals = []
+    for f in data:
+        rel = gunplay.inv(gunplay.bone_M(f.W, f.H, "thigh_r")) @ f.extra["gun"]
+        vals.append(float(np.clip(1 - np.linalg.norm(rel[:3, 3] - seat[:3, 3]) / 0.10, 0, 1)))
+    cb = anim._channelbag(me.shape_keys, "pocket_bulge")
+    anim._fcurve(cb, 'key_blocks["GunInPocket"].value', 0, np.asarray(frames, np.float32), np.asarray(vals, np.float32))
+    print("BULGE verts", int((push > 0).sum()), "max mm", round(1000 * float(push.max()), 1))
+
+
 def main():
     a = C.args()
     out_dir = a[0]
@@ -43,9 +82,10 @@ def main():
     hp = os.path.join(C.BUILD, "hair.npz")
     if os.path.exists(hp):
         hair.load_hair(hp, parent=rig, parent_bone="head")
+    garments = {}
     try:
         import clothes
-        clothes.load_clothes(rig=rig, body=body)
+        garments = clothes.load_clothes(rig=rig, body=body)
     except Exception as ex:
         print("no clothes:", ex)
     parts = pistol.build_pistol()
@@ -54,6 +94,8 @@ def main():
     n = len(data)
     fr = np.arange(1, n + 1)
     anim.key_rig(rig, fr, [f.quats for f in data], [f.root_loc for f in data], name="pistol")
+    if "Jeans" in garments:
+        pocket_bulge(garments["Jeans"], skel, data, fr)
     # gun root in world space
     anim.key_object(parts["root"], fr, [Matrix(f.extra["gun"].tolist()) for f in data], name="gun")
     # local mechanisms (relative to their rest local transforms)
