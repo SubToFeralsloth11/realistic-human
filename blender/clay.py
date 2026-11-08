@@ -30,6 +30,13 @@ def main():
         yaws = a[4]
     C.reset_scene()
     obj = C.load_npz_mesh(npz, "Body")
+    lm_path = os.path.join(C.BUILD, "landmarks.json")
+    if os.path.exists(lm_path):
+        import json
+        lm = json.load(open(lm_path))
+        for key in ("eye_l", "eye_r"):
+            C.bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=lm["eye_radius"], location=lm[key])
+            C.bpy.ops.object.shade_smooth()
     if engine == "cycles":
         C.setup_cycles(samples=96, res=res)
         obj.data.materials.append(C.clay_material())

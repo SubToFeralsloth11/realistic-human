@@ -4,6 +4,7 @@
   python3 src/build_body.py [--h 0.002] [--region body|head|hand|foot|torso] [--out build/body.npz]
 """
 import argparse
+import json
 import os
 import sys
 import time
@@ -11,7 +12,7 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from rh import body, ear, foot, hand, head  # noqa: E402
+from rh import body, ear, foot, hand, head, masks  # noqa: E402
 from rh.mesher import surface_nets  # noqa: E402
 from rh.sdf import Program  # noqa: E402
 from rh.skeleton import HEAD, HAND  # noqa: E402
@@ -53,7 +54,11 @@ def main():
     V, Q = surface_nets(prog, lo, hi, a.h, levels=a.levels, act=1.8, ev=3.0)
     out = a.out or os.path.join(ROOT, "build", f"{a.region}_{int(round(a.h * 1e4))}.npz")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    np.savez(out, verts=V, quads=Q)
+    with open(os.path.join(ROOT, "build", "landmarks.json"), "w") as f:
+        json.dump({"eye_l": head.LANDMARKS["eye_l"].tolist(), "eye_r": head.LANDMARKS["eye_r"].tolist(),
+                   "eye_radius": head.EYE_R}, f, indent=1)
+    attrs = {f"attr_{k}": v for k, v in masks.compute(V, prog).items()}
+    np.savez(out, verts=V, quads=Q, **attrs)
     print(f"wrote {out}: {len(V)} verts {len(Q)} quads in {time.time() - t:.1f}s")
 
 

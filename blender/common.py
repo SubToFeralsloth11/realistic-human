@@ -24,16 +24,19 @@ def reset_scene():
     return scene
 
 
-def mesh_from_quads(name, verts, quads, smooth=True):
+def mesh_from_faces(name, verts, faces, sizes, smooth=True):
+    """Mesh from a flat vertex-index array and per-face sizes (mixed quads / triangles)."""
     verts = np.asarray(verts, np.float32)
-    quads = np.asarray(quads, np.int32)
+    faces = np.asarray(faces, np.int32)
+    sizes = np.asarray(sizes, np.int32)
     me = bpy.data.meshes.new(name)
     me.vertices.add(len(verts))
     me.vertices.foreach_set("co", verts.ravel())
-    me.loops.add(quads.size)
-    me.loops.foreach_set("vertex_index", quads.ravel())
-    me.polygons.add(len(quads))
-    me.polygons.foreach_set("loop_start", np.arange(0, quads.size, 4, dtype=np.int32))
+    me.loops.add(len(faces))
+    me.loops.foreach_set("vertex_index", faces)
+    me.polygons.add(len(sizes))
+    starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int32)
+    me.polygons.foreach_set("loop_start", starts)
     me.update(calc_edges=True)
     if smooth:
         me.shade_smooth()
@@ -42,9 +45,17 @@ def mesh_from_quads(name, verts, quads, smooth=True):
     return obj
 
 
+def mesh_from_quads(name, verts, quads, smooth=True):
+    q = np.asarray(quads, np.int32)
+    return mesh_from_faces(name, verts, q.ravel(), np.full(len(q), 4, np.int32), smooth)
+
+
 def load_npz_mesh(path, name):
     data = np.load(path)
-    obj = mesh_from_quads(name, data["verts"], data["quads"])
+    if "faces" in data.files:
+        obj = mesh_from_faces(name, data["verts"], data["faces"], data["sizes"])
+    else:
+        obj = mesh_from_quads(name, data["verts"], data["quads"])
     for key in data.files:
         if key.startswith("attr_"):
             a = data[key]
