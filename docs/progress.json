@@ -1,6 +1,6 @@
 {
  "title": "REAL: a human built from scratch in Blender",
- "updated": "2026-11-09T02:47:04+10:00",
+ "updated": "2026-11-09T02:48:01+10:00",
  "now": "Rendering walk, run, backflip, jump, fall, shot, idle, crouch, punch, then Cycles hero stills",
  "phases": [
   {
@@ -324,7 +324,8 @@
   "Hair": "110,000 scalp strands, 32,000 stubble, brows, 400 lashes",
   "Rig": "66 bones incl. eyelids, jaw, forearm twist; weights computed from the sculpt",
   "Clothes": "T-shirt 635k, jeans 953k, sneakers 449k vertices",
-  "Teeth": "28 teeth + gums + tongue, 172k vertices"
+  "Teeth": "28 teeth + gums + tongue, 172k vertices",
+  "Download": "github.com/SubToFeralsloth11/realistic-human/releases/tag/v1.0 (realistic_human.blend, 206 MB)"
  },
  "gallery": [
   {
@@ -546,6 +547,10 @@
   }
  ],
  "log": [
+  {
+   "time": "2026-11-09T02:48:01+10:00",
+   "text": "Released the finished character as one .blend (v1.0): body, eyes, teeth, hair, clothes, pistol, rig, and every animation as an action."
+  },
   {
    "time": "2026-11-09T02:47:04+10:00",
    "text": "Done: Put pistol back in pocket"
