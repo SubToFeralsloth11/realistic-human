@@ -162,6 +162,19 @@ class Pose:
         sgn = 1.0 if side == "l" else -1.0
         return self.rot(b, 0, up).rot(b, 2, fwd * sgn)
 
+    def blink(self, amount, side=None):
+        """0 open .. 1 closed (upper lid sweeps down about the globe centre, lower lid rises a little)."""
+        for s in ([side] if side else ["l", "r"]):
+            self.rot(f"lid_upper_{s}", 0, -36.0 * amount).rot(f"lid_lower_{s}", 0, 7.0 * amount)
+        return self
+
+    def gaze(self, yaw=0.0, pitch=0.0):
+        """Eye rotation in degrees (yaw + looks to his left, pitch + up); upper lids follow the pitch."""
+        for s in ("l", "r"):
+            self.rot(f"eye_{s}", 2, yaw).rot(f"eye_{s}", 0, pitch)
+            self.rot(f"lid_upper_{s}", 0, 0.6 * pitch).rot(f"lid_lower_{s}", 0, 0.3 * pitch)
+        return self
+
     def jaw(self, open_deg):
         return self.rot("jaw", 0, -open_deg)
 

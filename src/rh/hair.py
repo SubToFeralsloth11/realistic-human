@@ -168,8 +168,9 @@ def _margin(eye_side, upper, n):
 
 
 def eyelashes(rng):
-    groups = []
-    for s in (1, -1):
+    """Four groups (upper/lower x left/right) so each can ride its eyelid bone."""
+    groups = {}
+    for s, sname in ((1, "l"), (-1, "r")):
         for upper, n, L0 in ((True, 130, 0.0095), (False, 70, 0.0055)):
             base, E = _margin(s, upper, n)
             base = base + rng.normal(0, 0.00025, base.shape)
@@ -189,6 +190,5 @@ def eyelashes(rng):
                 d = d + vert[None] * (0.35 if upper else 0.2) * f
                 d /= np.linalg.norm(d, axis=1, keepdims=True)
                 pts[:, i] = pts[:, i - 1] + d * (L / (k - 1))[:, None]
-            groups.append(pts)
-    pts = np.concatenate(groups)
-    return _pack(pts, 0.000060, 0.000015)
+            groups[f"lash_{'u' if upper else 'l'}{sname}"] = _pack(pts, 0.000060, 0.000015)
+    return groups

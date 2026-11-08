@@ -305,7 +305,6 @@ def jump(skel, seconds=3.2, distance=1.10):
             stand(skel, p, base=(0.0, y_l - 0.05), spread=0.12, stagger=0.0, curl=0.3)
         # arms: swing in the sagittal plane around the shoulders
         a = np.radians(interp_keys(t, arm_k))
-        W, H = None, None
         q, loc, W, H = p.solve()
         for side, sg in (("l", 1.0), ("r", -1.0)):
             sh = H[f"upperarm_{side}"]
@@ -366,20 +365,14 @@ def backflip(skel, seconds=3.3):
             q, loc, W, H = p.solve()
             c_body = com(skel, W, H)
             c_world = com0 + np.array([0.0, travel * s, v_up * (t - t_off) - 0.5 * G * (t - t_off) ** 2])
-            R = axis_angle([1, 0, 0], -ang)       # rotate about +X: positive x-rotation tips the head backwards
+            R = axis_angle([1, 0, 0], ang)        # negative rotation about +X carries the head backwards (+Y)
             pel = H["pelvis"]
-            p.pelvis(pitch=0.0)
-            p.B["pelvis"] = skel.A["root"].T @ R @ skel.A["root"] @ p.B.get("pelvis", np.eye(3)) if False else p.B.get("pelvis", np.eye(3))
             # apply world rotation R at the pelvis: W_pelvis = W_root @ L @ B  ->  B' = L^T W_root^T R W_pelvis_old
-            Wr = W["root"]
             L = skel.A["root"].T @ skel.A["pelvis"]
-            p.B["pelvis"] = L.T @ Wr.T @ R @ W["pelvis"]
+            p.B["pelvis"] = L.T @ W["root"].T @ R @ W["pelvis"]
             new_pel = c_world + R @ (pel - c_body)
             p.root_loc = p.root_loc + (new_pel - pel)
             a = np.radians(interp_keys(min(t, t_off + 0.2), arm_k)) if s < 0.25 else np.radians(160 - 100 * smooth((s - 0.25) / 0.7))
-            for side, sg in (("l", 1.0), ("r", -1.0)):
-                if 0.2 < s < 0.75:     # hands on the shins in the tuck
-                    pass
         else:
             drop = interp_keys(t, land_drop_k)
             pitch = interp_keys(t, land_pitch_k)
@@ -394,14 +387,182 @@ def backflip(skel, seconds=3.3):
         for side, sg in (("l", 1.0), ("r", -1.0)):
             sh = H[f"upperarm_{side}"]
             Wsp = W["spine_04"]
-            fwd = -Wsp[:, 2] * -1      # spine Z points forward
             up = Wsp[:, 1]
-            reach = 0.50
-            d = -np.sin(a) * 0 + 0
-            wrist = sh + sg * 0.08 * Wsp[:, 0] + reach * (np.sin(a) * Wsp[:, 2] - np.cos(a) * up)
+            wrist = sh + sg * 0.08 * Wsp[:, 0] + 0.50 * (np.sin(a) * Wsp[:, 2] - np.cos(a) * up)
             p.arm(side, wrist, sh - 0.3 * Wsp[:, 2] + sg * 0.2 * Wsp[:, 0])
         f = solve(p, {"pelvis": np.array([0.0, 0.15, 1.1])})
         out.append(f)
+    return out
+
+
+# ------------------------------------------------------------------ physics clips (ragdoll)
+def _ragdoll_frames(skel, start, prev, seconds, setup, per_frame=None):
+    """Simulate from an animated frame; returns frames keyed from the particle state."""
+    from .ragdoll import Ragdoll, to_rotations
+    rd = Ragdoll(skel, start.W, start.H, prev.W, prev.H)
+    setup(rd)
+    out = []
+    pel_off = start.H["pelvis"] - start.H["root"]
+    for i in range(int(seconds * FPS)):
+        if per_frame:
+            per_frame(rd, i)
+        rd.step()
+        W, P = to_rotations(skel, rd, rd.x, start.W)
+        root_head = P - pel_off
+        q, loc = skel.basis(W, root_head - skel.head["root"])
+        Wf, Hf = skel.fk({b: _mat(qq) for b, qq in q.items()}, root_head - skel.head["root"])
+        out.append(Frame(q, loc, Wf, Hf, {"pelvis": P.copy()}))
+    return out
+
+
+def _mat(q):
+    w, x, y, z = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+def fall(skel, seconds=4.5):
+    """Walk, the right foot catches mid-swing, he pitches forward, braces with his arms, hits the ground."""
+    walk = locomotion(skel, 1.75, WALK)
+    trip_i = len(walk) - 1
+    from .ragdoll import Ragdoll
+
+    def setup(rd):
+        # swing foot caught on an obstacle: pin the right toe briefly
+        rd.pins["toe_r"] = rd.x[rd.idx["toe_r"]].copy()
+        # protective reaction: arms forward and down, head up
+        tgt = rd.x.copy()
+        F, P = rd.pelvis_frame(rd.x)
+        for side, sg in (("l", 1.0), ("r", -1.0)):
+            sh = rd.x[rd.idx[f"sh_{side}"]]
+            tgt[rd.idx[f"el_{side}"]] = sh + F[:, 2] * 0.22 - F[:, 1] * 0.12 + sg * F[:, 0] * 0.08
+            tgt[rd.idx[f"wr_{side}"]] = sh + F[:, 2] * 0.45 - F[:, 1] * 0.25 + sg * F[:, 0] * 0.10
+            tgt[rd.idx[f"fi_{side}"]] = sh + F[:, 2] * 0.62 - F[:, 1] * 0.30 + sg * F[:, 0] * 0.11
+        rd.set_tone(0.03, tgt)
+
+    def per_frame(rd, i):
+        if i == 2:
+            rd.pins.pop("toe_r", None)
+        rd.tone = 0.03 if i < 20 else (0.012 if i < 36 else 0.0)
+        rd.friction = 0.75
+
+    sim = _ragdoll_frames(skel, walk[trip_i], walk[trip_i - 1], seconds - 1.75, setup, per_frame)
+    return walk + sim
+
+
+def shot(skel, seconds=4.5):
+    """Standing; a round hits the upper left chest; flinch, stagger, knees give, collapse."""
+    base = idle(skel, 1.2)
+    hit = len(base) - 1
+
+    def setup(rd):
+        F, P = rd.pelvis_frame(rd.x)
+        back = -F[:, 2]
+        # a 9 mm round carries ~3 kg m/s: barely moves an 80 kg man; the jolt is his own flinch
+        rd.impulse("chest", back * 0.35 + F[:, 0] * 0.1)
+        rd.impulse("sh_l", back * 0.9)
+        # flinch: right hand to the wound, shoulders hunch, knees soften
+        tgt = rd.x.copy()
+        wound = rd.x[rd.idx["chest"]] + F[:, 2] * 0.11 + F[:, 0] * 0.08 + F[:, 1] * 0.02
+        tgt[rd.idx["wr_r"]] = wound + F[:, 0] * -0.02
+        tgt[rd.idx["fi_r"]] = wound + F[:, 0] * 0.06
+        tgt[rd.idx["el_r"]] = rd.x[rd.idx["sh_r"]] + F[:, 2] * 0.18 - F[:, 1] * 0.20
+        rd.set_tone(0.05, tgt)
+
+    def per_frame(rd, i):
+        rd.tone = 0.05 if i < 12 else (0.025 if i < 30 else (0.008 if i < 48 else 0.0))
+
+    sim = _ragdoll_frames(skel, base[hit], base[hit - 1], seconds - 1.2, setup, per_frame)
+    for f in base:
+        f.extra["pelvis"] = np.array([0.0, 0.0, 0.95])
+    return base + sim
+
+
+# ------------------------------------------------------------------ crouch
+def crouch(skel, seconds=5.5):
+    n = int(seconds * FPS)
+    out = []
+    drop_k = [(0.0, 0.012), (0.7, 0.015), (1.7, 0.43), (3.9, 0.43), (4.9, 0.015), (seconds, 0.012)]
+    lean_k = [(0.0, 2.0), (0.7, 3.0), (1.7, 32.0), (3.9, 30.0), (4.9, 3.0), (seconds, 2.0)]
+    look_k = [(0.0, 0.0), (1.9, 0.0), (2.4, 38.0), (2.9, 38.0), (3.4, -34.0), (3.8, -30.0), (4.3, 0.0), (seconds, 0.0)]
+    heel_k = [(0.0, 0.0), (1.2, 0.0), (1.7, 18.0), (3.9, 18.0), (4.5, 0.0), (seconds, 0.0)]
+    for i in range(n):
+        t = i / FPS
+        p = Pose(skel)
+        drop = interp_keys(t, drop_k)
+        lean = interp_keys(t, lean_k)
+        look = interp_keys(t, look_k)
+        heel = interp_keys(t, heel_k)
+        crouched = smooth((drop - 0.02) / 0.4)
+        p.root((0.0, 0.035 * crouched, LIFT - drop), 0.0)
+        p.pelvis(pitch=lean * 0.5)
+        p.spine(pitch=lean * 0.5, yaw=look * 0.25)
+        p.neck(pitch=-lean * 0.8, yaw=look * 0.75)
+        p.gaze(yaw=look * 0.15)
+        for side, sg in (("l", 1.0), ("r", -1.0)):
+            flat = np.array([sg * (0.11 + 0.05 * crouched), -0.02, ANKLE_H + LIFT])
+            a = stance_ankle(flat, -heel)
+            rot = axis_angle([0, 0, 1], sg * 14.0 * crouched) @ pitch_rot(-heel) @ skel.A[f"foot_{side}"]
+            p.leg(side, a, a + np.array([sg * 0.25 * crouched, -0.6, 0.45]), foot_rot=rot, toe=heel)
+            knee_front = np.array([sg * 0.20, -0.30, 0.50 + 0.45 * (1 - crouched)])
+            wrist = (1 - crouched) * np.array([sg * 0.23, 0.0, 0.865 - drop]) + crouched * (knee_front + [sg * -0.04, -0.08, 0.03])
+            p.arm(side, wrist, np.array([sg * 0.45, 0.4, 0.9]))
+            p.fingers(side, curl=0.35 + 0.2 * crouched, thumb=0.3)
+        out.append(solve(p, {"pelvis": np.array([0.0, 0.0, 1.0 - 0.3 * crouched])}))
+    return out
+
+
+# ------------------------------------------------------------------ punch combo
+def punch(skel, seconds=4.6):
+    n = int(seconds * FPS)
+    out = []
+    stance = lambda t: smooth((t - 0.2) / 0.5) * (1 - smooth((t - 3.9) / 0.6))
+    hits = {"jab": (1.10, "l"), "cross": (1.75, "r"), "hook": (2.45, "l"), "jab2": (3.05, "l")}
+    face = np.array([0.0, -0.78, 1.60])
+
+    def ext(t, t0, out_t=0.11, back_t=0.17):
+        if t < t0 - out_t or t > t0 + back_t:
+            return 0.0
+        return smooth((t - (t0 - out_t)) / out_t) if t < t0 else 1 - smooth((t - t0) / back_t)
+
+    for i in range(n):
+        t = i / FPS
+        s = stance(t)
+        jab = max(ext(t, hits["jab"][0]), ext(t, hits["jab2"][0]))
+        cross = ext(t, hits["cross"][0], 0.13, 0.20)
+        hook = ext(t, hits["hook"][0], 0.14, 0.22)
+        p = Pose(skel)
+        twist = -25.0 * s + 40.0 * cross - 35.0 * hook + 8.0 * jab
+        p.root((0.0, -0.05 * cross, LIFT - 0.012 - 0.06 * s), -14.0 * s)
+        p.pelvis(pitch=3.0 * s, yaw=twist * 0.45)
+        p.spine(pitch=8.0 * s + 4 * cross, yaw=twist * 0.55, roll=-6.0 * hook)
+        p.neck(pitch=-6.0 * s, yaw=-twist * 0.7 + 14.0 * s)
+        # feet: orthodox stance, left foot forward; rear heel lifts and pivots on the cross
+        lf = np.array([0.10 * (1 - s) + 0.05 * s, -0.02 - 0.24 * s, ANKLE_H + LIFT])
+        rf = np.array([-0.11 * (1 - s) - 0.17 * s, 0.03 + 0.12 * s, ANKLE_H + LIFT])
+        heel_r = 25.0 * cross + 8.0 * s
+        ar = stance_ankle(rf, -heel_r, heading=-30 * s)
+        p.leg("l", lf, lf + [0.05, -0.6, 0.45], foot_rot=axis_angle([0, 0, 1], -10 * s) @ skel.A["foot_l"])
+        p.leg("r", ar, ar + [-0.1, -0.6, 0.45], foot_rot=axis_angle([0, 0, 1], -30 * s + 25 * cross) @ pitch_rot(-heel_r) @ skel.A["foot_r"], toe=heel_r)
+        q, loc, W, H = p.solve()
+        for side, sg in (("l", 1.0), ("r", -1.0)):
+            sh = H[f"upperarm_{side}"]
+            guard = np.array([sg * 0.06, -0.22 if side == "l" else -0.14, 1.52 if side == "l" else 1.47])
+            rest = np.array([sg * 0.23, 0.0, 0.865])
+            base = rest * (1 - s) + guard * s
+            if side == "l":
+                tgt = face + np.array([0.04, 0.0, -0.02])
+                hook_pt = np.array([-0.05, -0.50, 1.55])
+                wrist = base + (tgt - base) * jab + (hook_pt - base) * hook
+                pole = sh + np.array([0.35, 0.15, -0.35]) if hook < 0.2 else sh + np.array([0.3, 0.0, 0.25])
+            else:
+                tgt = face + np.array([-0.02, 0.05, 0.0])
+                wrist = base + (tgt - base) * cross
+                pole = sh + np.array([-0.35, 0.2, -0.35])
+            p.arm(side, wrist, pole, hand_twist=(-70.0 * (jab if side == "l" else cross) * sg) - 20 * s * sg)
+            p.fingers(side, curl=0.35 + 0.65 * s, thumb=0.35 + 0.55 * s)
+        out.append(solve(p, {"pelvis": np.array([0.0, 0.0, 1.05])}))
     return out
 
 
@@ -409,7 +570,11 @@ def backflip(skel, seconds=3.3):
 CLIPS = {
     "walk": lambda s: (locomotion(s, 4.4, WALK), {"offset": (2.9, -2.4, 0.25), "lens": 38, "smooth": 12}),
     "run": lambda s: (locomotion(s, 3.0, RUN), {"offset": (3.6, -3.0, 0.20), "lens": 35, "smooth": 10}),
-    "idle": lambda s: (idle(s), {"offset": (1.6, -2.6, 0.05), "lens": 45, "smooth": 30}),
+    "idle": lambda s: (idle(s), {"offset": (2.2, -3.6, 0.0), "lens": 45, "smooth": 30}),
     "jump": lambda s: (jump(s), {"offset": (3.4, -1.2, 0.0), "lens": 35, "smooth": 30}),
     "backflip": lambda s: (backflip(s), {"offset": (3.6, 0.0, 0.1), "lens": 35, "smooth": 30}),
+    "fall": lambda s: (fall(s), {"offset": (3.0, -1.6, 0.0), "lens": 35, "smooth": 18}),
+    "shot": lambda s: (shot(s), {"offset": (2.8, -2.2, 0.0), "lens": 38, "smooth": 20}),
+    "crouch": lambda s: (crouch(s), {"offset": (2.6, -3.2, -0.1), "lens": 40, "smooth": 30}),
+    "punch": lambda s: (punch(s), {"offset": (3.2, -2.0, 0.0), "lens": 40, "smooth": 30}),
 }

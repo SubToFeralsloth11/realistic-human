@@ -96,6 +96,24 @@ def compute(verts, faces, sizes, prog, bones, sigma=0.010, smooth_iters=12):
     q = P - headmod.O
     jaw = (1 - smoothstep(-0.0745, -0.0690, q[:, 2])) * (1 - smoothstep(0.040, 0.062, q[:, 1]))
     add("head", {"head": 1 - jaw, "jaw": jaw})
+    # eyelids: skin on the lid shell between the margins and the folds follows the lid bones
+    hi = col["head"]
+    for side in ("l", "r"):
+        if f"lid_upper_{side}" not in col:
+            continue
+        v = P.astype(np.float64) - headmod.LANDMARKS[f"eye_{side}"]
+        r = np.linalg.norm(v, axis=1)
+        R = headmod.LID_R
+        shell = (1 - smoothstep(R + 0.0025, R + 0.0065, r)) * smoothstep(R - 0.003, R - 0.001, r)
+        front = 1 - smoothstep(-0.002, 0.004, v[:, 1])
+        lat = 1 - smoothstep(0.013, 0.018, np.abs(v[:, 0]))
+        elev = np.degrees(np.arcsin(np.clip(v[:, 2] / np.maximum(r, 1e-9), -1, 1)))
+        upper = smoothstep(8, 13, elev) * (1 - smoothstep(26, 44, elev))
+        lower = (1 - smoothstep(-22, -17, elev)) * smoothstep(-42, -30, elev)
+        for bone, w in ((f"lid_upper_{side}", upper), (f"lid_lower_{side}", 0.9 * lower)):
+            w = w * shell * front * lat
+            W[:, col[bone]] += w * W[:, hi]
+            W[:, hi] *= (1 - w)
     for s, sg in (("l", 1.0), ("r", -1.0)):
         S = np.array([sg, 1.0, 1.0])
         # arm: elbow blend +-35 mm, forearm twist towards the wrist

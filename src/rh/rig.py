@@ -44,7 +44,11 @@ def left_bones():
     for k in ("eye_l", "eye_r"):
         c = headmod.LANDMARKS[k]
         b[k] = (c, c + [0, -0.025, 0], "head", np.array([0.0, 0.0, 1.0]))
-    # arm (local Z of arm bones = anterior, like the authoring frames' x... use the arm frame's z)
+    # eyelids pivot on the globe centre: rotating about local X slides the lid shell over the eye
+    c = headmod.LANDMARKS["eye_l"]
+    b["lid_upper_l"] = (c, c + [0, -0.020, 0], "head", np.array([0.0, 0.0, 1.0]))
+    b["lid_lower_l"] = (c, c + [0, -0.018, 0], "head", np.array([0.0, 0.0, 1.0]))
+    # arm: local Z of the arm bones = the upper-arm frame's superior-lateral axis
     arm_z = UPPERARM.ez
     elbow, wrist = J["lowerarm_l"], J["hand_l"]
     b["clavicle_l"] = (J["clavicle_l"], J["upperarm_l"], "spine_04", np.array([0.0, 0.0, 1.0]))

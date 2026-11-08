@@ -101,14 +101,6 @@ def build_character(npz=None, with_eyes=True, material=True):
                 ob.parent_bone = key
                 ob.matrix_world = mw
             eyes += parts
-        target = bpy.data.objects.new("EyeTarget", None)
-        bpy.context.scene.collection.objects.link(target)
-        target.location = Vector(lm["eye_l"]).lerp(Vector(lm["eye_r"]), 0.5) + Vector((0, -1.5, 0))
-        target.parent = rig_ob
-        for key in ("eye_l", "eye_r"):
-            c = rig_ob.pose.bones[key].constraints.new("DAMPED_TRACK")
-            c.target = target
-            c.track_axis = "TRACK_Y"
     return rig_ob, body, eyes
 
 

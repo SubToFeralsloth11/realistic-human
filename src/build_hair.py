@@ -35,10 +35,10 @@ def main():
         "scalp": lambda: hair.scalp(prog, verts, tris, m["attr_m_scalp"], rng, int(110000 * a.scale)),
         "brows": lambda: hair.eyebrows(prog, verts, tris, m["attr_m_brow"], rng, int(1500 * a.scale)),
         "stubble": lambda: hair.stubble(prog, verts, tris, m["attr_m_beard"], rng, int(32000 * a.scale)),
-        "lashes": lambda: hair.eyelashes(rng),
     }
-    for name, fn in groups.items():
-        pts, counts, radius = fn()
+    results = {name: fn() for name, fn in groups.items()}
+    results.update(hair.eyelashes(rng))
+    for name, (pts, counts, radius) in results.items():
         out[f"{name}_points"], out[f"{name}_counts"], out[f"{name}_radius"] = pts, counts, radius
         print(f"[{time.time() - t0:6.1f}s] {name}: {len(counts)} strands, {len(pts)} points", flush=True)
     np.savez_compressed(a.out, **out)

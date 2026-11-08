@@ -31,8 +31,37 @@ def hair_material(name, melanin, redness, rough, radial, rand):
     # per-strand randomness for the Random input
     info = nt.nodes.new("ShaderNodeHairInfo")
     nt.links.new(info.outputs["Random"], h.inputs["Random"])
+    out.target = "CYCLES"
     nt.links.new(h.outputs[0], out.inputs[0])
+    # EEVEE approximates the Chiang model poorly (strands go black): Kajiya-Kay reflection +
+    # transmission tinted by the equivalent melanin colour, with a per-strand value jitter
+    tint = _melanin_rgb(melanin, redness)
+    ev = nt.nodes.new("ShaderNodeOutputMaterial")
+    ev.target = "EEVEE"
+    refl = nt.nodes.new("ShaderNodeBsdfHair"); refl.component = "Reflection"
+    trans = nt.nodes.new("ShaderNodeBsdfHair"); trans.component = "Transmission"
+    for node, k in ((refl, 1.0), (trans, 2.2)):
+        node.inputs["Color"].default_value = (min(tint[0] * k, 1), min(tint[1] * k, 1), min(tint[2] * k, 1), 1)
+        node.inputs["RoughnessU"].default_value = 0.25
+        node.inputs["RoughnessV"].default_value = 0.6
+    diff = nt.nodes.new("ShaderNodeBsdfDiffuse")
+    diff.inputs["Color"].default_value = (*tint, 1)
+    add1 = nt.nodes.new("ShaderNodeAddShader")
+    add2 = nt.nodes.new("ShaderNodeAddShader")
+    nt.links.new(refl.outputs[0], add1.inputs[0]); nt.links.new(trans.outputs[0], add1.inputs[1])
+    nt.links.new(add1.outputs[0], add2.inputs[0]); nt.links.new(diff.outputs[0], add2.inputs[1])
+    nt.links.new(add2.outputs[0], ev.inputs[0])
     return mat
+
+
+def _melanin_rgb(melanin, redness):
+    """Approximate albedo of a hair fibre with the given melanin (0..1) and redness (0..1)."""
+    eu = melanin * (1 - redness)
+    pheo = melanin * redness
+    base = np.array([0.95, 0.80, 0.55]) * (1 - eu) ** 2.2 + np.array([0.02, 0.012, 0.008]) * eu
+    red = np.array([0.55, 0.20, 0.08])
+    col = base * (1 - 0.6 * pheo) + red * 0.6 * pheo * (1 - eu)
+    return tuple(float(c) for c in np.clip(col * 1.6, 0.01, 1.0))
 
 
 def curves_object(name, points, counts, radius):
@@ -46,21 +75,30 @@ def curves_object(name, points, counts, radius):
     return ob
 
 
+LASH_BONES = {"lash_ul": "lid_upper_l", "lash_ll": "lid_lower_l", "lash_ur": "lid_upper_r", "lash_lr": "lid_lower_r"}
+
+
 def load_hair(path, parent=None, parent_bone="head", groups=None):
+    """One Curves object per group in the npz; lashes ride their eyelid bones when the rig has them."""
     data = np.load(path)
-    objs = {}
-    for g, style in STYLE.items():
+    names = sorted({k[:-len("_points")] for k in data.files if k.endswith("_points")})
+    objs, mats = {}, {}
+    for g in names:
         if groups and g not in groups:
             continue
-        if f"{g}_points" not in data.files:
-            continue
+        style_key = "lashes" if g.startswith("lash") else g
+        if style_key not in mats:
+            mats[style_key] = hair_material(style_key, *STYLE[style_key])
         ob = curves_object("Hair_" + g, data[f"{g}_points"], data[f"{g}_counts"], data[f"{g}_radius"])
-        ob.data.materials.append(hair_material(g, *style))
+        ob.data.materials.append(mats[style_key])
         if parent is not None:
+            bone = LASH_BONES.get(g, parent_bone)
+            if bone not in parent.data.bones:
+                bone = parent_bone
             mw = ob.matrix_world.copy()
             ob.parent = parent
             ob.parent_type = "BONE"
-            ob.parent_bone = parent_bone
+            ob.parent_bone = bone
             ob.matrix_world = mw
         objs[g] = ob
     return objs

@@ -52,10 +52,11 @@ def main():
     anim.setup_eevee(res=res, samples=samples)
     rng = opt(a, "--frames", None)
     f0, f1 = (int(x) for x in rng.split(":")) if rng else (1, n)
-    if "--still" in a:
-        k = int(opt(a, "--still", "1"))
-        bpy.context.scene.frame_set(k)
-        C.render(a[a.index("--still") + 2])
+    if "--stills" in a:                      # --stills 1,9,17 <prefix>
+        prefix = a[a.index("--stills") + 2]
+        for k in [int(x) for x in opt(a, "--stills", "1").split(",")]:
+            bpy.context.scene.frame_set(k)
+            C.render(f"{prefix}_{k:03d}.png")
         return
     anim.render_mp4(out, f0, f1)
 
