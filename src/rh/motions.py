@@ -107,15 +107,22 @@ def gait_leg(phase, k, stride, x, y0, params):
     return ankle, theta, 0.0
 
 
+# arm swing is shoulder-driven FK in the thorax frame (deg): flexion = mid + amp * forward phase,
+# elbow likewise; arm_abd keeps the hands clear of the thighs. swing_dorsi caps the swing ankle's
+# dorsiflexion relative to the shank (soft clamp from [0] saturating at [1]). shock: velocity the
+# free bodies keep relative to the pelvis at each heel strike (down, forward; m/s).
 WALK = dict(cycle=1.06, speed=1.20, stance=0.60, contact=0.30, heel_strike=8.0, foot_flat=0.17, heel_off=0.62,
             toe_off=-26.0, swing_z=(0.235, 0.17, 0.115), swing_pitch=(-6.0, 0.0), width=0.078, bob=0.018,
-            bob_phase=0.0, sway=0.020, pel_yaw=4.0, pel_roll=4.0, lean=3.0, thorax_yaw=6.0, arm_swing=0.13,
-            arm_z=0.86, arm_x=0.215, arm_lift=0.03, crouch=0.022, head_pitch=2.0, curl=0.30, clav_up=-3.0, run=False)
+            bob_phase=0.0, sway=0.020, pel_yaw=4.0, pel_roll=4.0, lean=3.0, thorax_yaw=6.0,
+            arm_flex=(3.0, 13.0), arm_elbow=(19.0, 10.0), arm_abd=9.0, arm_cross=0.0, arm_lag=0.04,
+            swing_dorsi=(3.0, 10.0), shock=(0.10, 0.15), crouch=0.022, head_pitch=2.0, curl=0.30, clav_up=-3.0,
+            run=False)
 
 RUN = dict(cycle=0.72, speed=3.0, stance=0.32, contact=0.24, heel_strike=4.0, foot_flat=0.25, heel_off=0.40,
            toe_off=-32.0, swing_z=(0.52, 0.40, 0.17), swing_pitch=(-20.0, 4.0), width=0.055, bob=0.030,
-           bob_phase=0.16, sway=0.012, pel_yaw=8.0, pel_roll=5.0, lean=10.0, thorax_yaw=12.0, arm_swing=0.19,
-           arm_z=1.00, arm_x=0.20, arm_lift=0.12, crouch=0.050, head_pitch=5.0, curl=0.60, clav_up=0.0, run=True)
+           bob_phase=0.16, sway=0.012, pel_yaw=8.0, pel_roll=5.0, lean=10.0, thorax_yaw=12.0,
+           arm_flex=(8.0, 33.0), arm_elbow=(88.0, 6.0), arm_abd=12.0, arm_cross=10.0, arm_lag=0.03,
+           swing_dorsi=(6.0, 16.0), shock=(0.20, 0.12), crouch=0.050, head_pitch=5.0, curl=0.60, clav_up=0.0, run=True)
 
 
 def _hip_drop(skel, H, ankles, margin=0.985):
@@ -130,6 +137,29 @@ def _hip_drop(skel, H, ankles, margin=0.985):
         need = (hip[2] - ank[2]) - np.sqrt(L * L - horiz * horiz)
         drop = max(drop, need)
     return drop
+
+
+def _ankle_dorsi(skel, W, side):
+    """Ankle dorsiflexion (deg, toes toward the shin +) of a solved pose relative to the rest pose."""
+    def ang(calf, foot):
+        return np.degrees(np.arccos(np.clip(np.dot(calf[:, 1], foot[:, 1]), -1.0, 1.0)))
+    return ang(W[f"calf_{side}"], W[f"foot_{side}"]) - ang(skel.A[f"calf_{side}"], skel.A[f"foot_{side}"])
+
+
+def arm_fk(skel, p, W, H, side, flex, elbow, abd=8.0, hand_twist=0.0):
+    """Pose an arm by joint angles in the thorax frame of a solved pose (W, H): shoulder flexion
+    (+ forward) and abduction from hanging, elbow flexion in the same plane (deg)."""
+    F = W["spine_04"]                       # x his left, y up, z forward
+    lat = (1.0 if side == "l" else -1.0) * F[:, 0]
+    hang = np.cos(np.radians(abd)) * -F[:, 1] + np.sin(np.radians(abd)) * lat
+    u = axis_angle(-F[:, 0], flex) @ hang
+    fore = axis_angle(-F[:, 0], flex + max(elbow, 3.0)) @ hang
+    sh = H[f"upperarm_{side}"]
+    el = sh + skel.length[f"upperarm_{side}"] * u
+    wrist = el + skel.length[f"lowerarm_{side}"] * fore
+    back = axis_angle(-F[:, 0], -90.0) @ u
+    p.arm(side, wrist, el + 0.3 * back + 0.05 * lat, hand_twist=hand_twist)
+    return wrist
 
 
 def locomotion(skel, seconds, params, start_y=0.0):
@@ -155,33 +185,47 @@ def locomotion(skel, seconds, params, start_y=0.0):
             legs[side] = (ph,) + gait_leg(ph, k, stride, sg * params["width"], y0, params)
         controls.append((t, ph_l, bob, sway, y, legs))
 
-    def build(c, drop):
+    def build(c, drop, full=True):
         t, ph_l, bob, sway, y, legs = c
         p = Pose(skel)
         z = LIFT - params["crouch"] + bob - drop
+        c1, s1, s2 = np.cos(2 * np.pi * ph_l), np.sin(2 * np.pi * ph_l), np.sin(4 * np.pi * ph_l)
         p.root((sway, y, z), 0.0)
-        p.pelvis(pitch=1.5 * np.sin(4 * np.pi * ph_l) + params["lean"] * 0.3,
-                 roll=params["pel_roll"] * np.sin(2 * np.pi * ph_l),
-                 yaw=-params["pel_yaw"] * np.cos(2 * np.pi * ph_l))
-        p.spine(pitch=params["lean"] * 0.7, roll=-0.5 * params["pel_roll"] * np.sin(2 * np.pi * ph_l),
-                yaw=(params["thorax_yaw"] + params["pel_yaw"]) * np.cos(2 * np.pi * ph_l))
-        p.neck(pitch=params["head_pitch"] - params["lean"] * 0.6, yaw=-params["thorax_yaw"] * 0.8 * np.cos(2 * np.pi * ph_l))
+        p.pelvis(pitch=1.5 * s2 + params["lean"] * 0.3, roll=params["pel_roll"] * s1, yaw=-params["pel_yaw"] * c1)
+        p.spine(pitch=params["lean"] * 0.7, roll=-0.5 * params["pel_roll"] * s1,
+                yaw=(params["thorax_yaw"] + params["pel_yaw"]) * c1)
+        # steady head: the neck cancels what pelvis and thorax do to the skull's orientation
+        p.neck(pitch=params["head_pitch"] - params["lean"] * 0.6 - 1.5 * s2, roll=-0.5 * params["pel_roll"] * s1,
+               yaw=-params["thorax_yaw"] * c1)
         p.blink(blink_at(t, (0.9, 3.6, 6.2)))
-        for side, sg in (("l", 1.0), ("r", -1.0)):
+        for side in ("l", "r"):
             ph, ank, theta, toe = legs[side]
             p.leg(side, ank, ank + np.array([0.0, -0.6, 0.45]), foot_rot=pitch_rot(theta) @ skel.A[f"foot_{side}"], toe=toe)
-            sw = np.cos(2 * np.pi * ph)        # +1 when this leg strikes: same-side arm swings back
-            fwd = max(-sw, 0.0)
-            wrist = np.array([sway + sg * (params["arm_x"] - 0.03 * fwd * params["run"]),
-                              y + params["arm_swing"] * sw - 0.03 - 0.03 * params["run"],
-                              params["arm_z"] + z + params["arm_lift"] * fwd])
-            p.arm(side, wrist, np.array([sg * 0.30, y + 0.55, 1.10 + z]))
             p.clavicle(side, up=params["clav_up"], fwd=2.0)
             p.fingers(side, curl=params["curl"], thumb=0.3)
+        if not full:
+            return p
+        _, _, W, H = p.solve()
+        for side in ("l", "r"):
+            ph, ank, theta, toe = legs[side]
+            s = (ph - params["stance"]) / (1 - params["stance"])
+            if s > 0.0:                         # swing: hold the ankle to a plausible angle on the shank
+                d = _ankle_dorsi(skel, W, side)
+                lo, hi = params["swing_dorsi"]
+                if d > lo:
+                    excess = (d - lo - (hi - lo) * np.tanh((d - lo) / (hi - lo))) * smooth(s / 0.06)
+                    f, shin = W[f"foot_{side}"][:, 1], W[f"calf_{side}"][:, 1]
+                    rot = axis_angle(np.cross(f, shin), excess) @ W[f"foot_{side}"]
+                    p.leg(side, ank, ank + np.array([0.0, -0.6, 0.45]), foot_rot=rot, toe=toe)
+            fwd = -np.cos(2 * np.pi * (ph - params["arm_lag"]))   # +1: this arm fully forward (opposite leg)
+            fm, fa = params["arm_flex"]
+            em, ea = params["arm_elbow"]
+            arm_fk(skel, p, W, H, side, fm + fa * fwd, em + ea * fwd, params["arm_abd"] - params["arm_cross"] * max(fwd, 0.0))
         return p
 
     # pass 1: hip heights needed for both feet to reach; widen with a max filter, then smooth
-    drops = np.array([_hip_drop(skel, build(c, 0.0).solve()[3], {s: c[5][s][1] for s in ("l", "r")}) for c in controls])
+    drops = np.array([_hip_drop(skel, build(c, 0.0, full=False).solve()[3], {s: c[5][s][1] for s in ("l", "r")})
+                      for c in controls])
     w = 4
     padded = np.pad(drops, w, mode="edge")
     mx = np.array([padded[i:i + 2 * w + 1].max() for i in range(n)])
@@ -236,56 +280,133 @@ def hang_arms(p, root_xy, z_off, sway=0.0, fwd=0.0, width=0.23, height=0.865):
 
 
 # ------------------------------------------------------------------ idle
+IDLE_LOOKS = ((0.0, (0.0, -2.0)), (1.1, (22.0, -3.0)), (2.6, (-5.0, -9.0)), (3.7, (-24.0, 2.0)), (5.1, (3.0, -1.0)))
+
+
+def _steps(t, keys, delay=0.0, dur=0.07):
+    """Value of a held sequence of (time, vector) keys, each change eased over dur after delay."""
+    v = np.array(keys[0][1], float)
+    for (_, a), (tk, b) in zip(keys, keys[1:]):
+        v = v + (np.array(b, float) - np.array(a, float)) * smooth((t - tk - delay) / dur)
+    return v
+
+
 def idle(skel, seconds=6.0):
+    """Relaxed standing: contrapposto on the right leg with one shift onto the left and back, slow
+    ankle sway, breathing, a look-around where the eyes jump first and the head follows, a finger
+    flex and a shoulder roll. Kinematic reference; CLIPS runs it through the rigid-body layer."""
     n = int(seconds * FPS)
     out = []
-    rng = np.random.default_rng(3)
-    look = [(0.0, (0.0, 0.0))] + [(t, (rng.normal(0, 9), rng.normal(-2, 3))) for t in np.arange(1.2, seconds + 1.2, 1.4)]
     for i in range(n):
         t = i / FPS
-        breath = np.sin(2 * np.pi * t / 4.2)
-        shift = np.sin(2 * np.pi * t / seconds)           # weight shifts left <-> right once per loop
-        p = Pose(skel)
-        drop = 0.012 + 0.004 * abs(shift)
-        p.root((0.022 * shift, 0.0, LIFT - drop), 0.0)
-        p.pelvis(pitch=1.0, roll=-2.2 * shift, yaw=1.5 * shift)
-        p.spine(pitch=-0.8 * breath + 1.5, roll=1.6 * shift, yaw=-1.0 * shift)
-        yaw, pitch = interp_keys(t, look)
-        p.neck(pitch=pitch, yaw=yaw, roll=-1.0 * shift)
-        p.blink(blink_at(t, (0.8, 2.9, 4.4, 5.6)))
-        p.gaze(yaw=yaw * 0.25, pitch=pitch * 0.3)
-        stand(skel, p, base=(0.0, 0.0), curl=0.36 + 0.03 * np.sin(t * 1.3))
-        hang_arms(p, (0.022 * shift, 0.0), -drop, sway=0.004 * breath)
-        for side in ("l", "r"):
-            p.clavicle(side, up=0.9 * breath, fwd=0.0)
-        f = solve(p, {"pelvis": np.array([0.0, 0.0, 1.0])})
-        f.extra["look"] = (yaw, pitch)
-        out.append(f)
+        w = -1.0 + 2.0 * smooth((t - 2.2) / 0.9) - 2.0 * smooth((t - 4.9) / 0.9)   # -1 on the right leg, +1 left
+        br = np.sin(2 * np.pi * t / 4.5)                                            # +1 full inhale
+        sx = 0.004 * np.sin(2 * np.pi * 0.13 * t + 0.7)                             # postural sway (ankles)
+        sy = 0.006 * np.sin(2 * np.pi * 0.17 * t) + 0.003 * np.sin(2 * np.pi * 0.41 * t + 1.0)
+        gaze = _steps(t, IDLE_LOOKS)                                                # saccades
+        head = _steps(t, IDLE_LOOKS, delay=0.10, dur=0.55) * 0.8                    # head follows, eyes cover the rest
+        u = np.clip((t - 4.2) / 1.1, 0.0, 1.0)                                      # right shoulder roll
+        roll_up, roll_fwd = 7.0 * np.sin(np.pi * u), 5.0 * np.sin(2 * np.pi * u)
+
+        def build(drop):
+            p = Pose(skel)
+            p.root((0.026 * w + sx, sy, LIFT - drop), 0.0)
+            p.pelvis(pitch=1.0 - np.degrees(sy / 0.95), roll=-5.0 * w, yaw=2.0 * w)
+            p.spine(pitch=1.5 - 0.9 * br, roll=7.0 * w, yaw=-1.5 * w + 0.15 * head[0])
+            p.neck(pitch=head[1] + 0.3 * br, yaw=0.85 * head[0], roll=-2.0 * w - 3.0 * np.sin(np.pi * u))
+            p.gaze(yaw=gaze[0] - head[0], pitch=gaze[1] - head[1])
+            p.blink(blink_at(t, (0.5, 1.12, 2.62, 3.72, 5.6)))
+            stand(skel, p, base=(0.0, 0.0), curl=0.36)
+            p.clavicle("l", up=-2.0 + 1.3 * br, fwd=1.0)
+            p.clavicle("r", up=-2.0 + 1.3 * br + roll_up, fwd=1.0 + roll_fwd)
+            return p
+
+        p0 = build(0.0)
+        drop = _hip_drop(skel, p0.solve()[3], {s: p0.ik[f"leg_{s}"][0] for s in "lr"}, margin=0.999)
+        p = build(drop)
+        _, _, W, H = p.solve()
+        arm_fk(skel, p, W, H, "l", -2.0 + 1.0 * br, 13.0, 7.0)
+        arm_fk(skel, p, W, H, "r", -3.0 + 1.0 * br - 4.0 * np.sin(np.pi * u), 10.0, 7.0)
+        flex = np.clip((t - 0.3) / 1.0, 0.0, 1.0)              # left fingers flex in a ripple and relax
+        p.fingers("l", curl=0.0, thumb=0.0,                     # adds to the curl stand() set
+                  per={f: 0.3 * np.sin(np.pi * np.clip(flex * 1.3 - k * 0.1, 0.0, 1.0)) ** 2
+                       for k, f in enumerate(("index", "middle", "ring", "pinky"))})
+        out.append(solve(p, {"pelvis": np.array([0.0, 0.0, 1.0])}))
     return out
 
 
 # ------------------------------------------------------------------ jump (standing broad jump)
+JUMP_TIMES = (0.95, 1.25, 0.46)        # deepest dip, take-off, flight (s)
+FLIP_TIMES = (0.80, 1.05, 0.72)
+
+
+def _hermite(p0, p1, m0, m1, u):
+    """Cubic from p0 to p1 with end slopes m0, m1 (per unit u), u in [0, 1]."""
+    u = np.clip(u, 0.0, 1.0)
+    return (p0 * (2 * u ** 3 - 3 * u ** 2 + 1) + m0 * (u ** 3 - 2 * u ** 2 + u) + p1 * (3 * u ** 2 - 2 * u ** 3)
+            + m1 * (u ** 3 - u ** 2))
+
+
 def jump(skel, seconds=3.2, distance=1.10):
+    """Standing broad jump. The hips accelerate into the take-off velocity during the push, fly a
+    ballistic arc, touch down with the feet reaching ahead and brake over a quarter second, so
+    the pelvis path has no velocity jumps for the rigid-body layer to turn into whiplash."""
     n = int(seconds * FPS)
-    t_dip, t_off, flight = 0.95, 1.25, 0.46
+    t_dip, t_off, flight = JUMP_TIMES
     t_land = t_off + flight
-    v_up = G * flight / 2
+    push = t_off - t_dip
+    v_h = distance / flight                                 # horizontal take-off speed
+    pitch_off, pitch_td = 12.0, 15.0                        # torso pitch at take-off and touchdown
     out = []
-    # timeline of controls: (time, hip drop, torso pitch, arm swing angle (deg, + forward/up))
-    drop_k = [(0.0, 0.012), (0.55, 0.020), (t_dip, 0.27), (t_off - 0.03, 0.03), (t_off, 0.0)]
-    pitch_k = [(0.0, 2.0), (0.55, 6.0), (t_dip, 40.0), (t_off, 12.0)]
+
+    def flight_legs(p, s):
+        tuck = np.sin(np.pi * s) ** 1.2
+        reach = smooth((s - 0.45) / 0.55)                   # legs reach forward for the landing
+        leave = smooth(s / 0.25)                            # knees and ankles let go of the push
+        pitch = pitch_off + (pitch_td - pitch_off) * s      # same split as on the ground: no kinematic kick
+        p.pelvis(pitch=pitch * 0.35 - 8 * tuck)
+        p.spine(pitch=pitch * 0.65 + 6 * tuck)
+        p.neck(pitch=-pitch * 0.55 - 3 * tuck)
+        for side in ("l", "r"):
+            p.rot(f"thigh_{side}", 0, 20 + 75 * tuck - 15 * (1 - s) + 40 * reach)
+            p.rot(f"calf_{side}", 0, -(30 + 70 * tuck - 5 * reach) * leave)
+            p.rot(f"foot_{side}", 0, -20.0 * (1 - leave))
+            p.fingers(side, curl=0.3, thumb=0.3)
+
+    # touchdown geometry: where the feet are (relative to the root) when the flight pose lands
+    p = Pose(skel).root((0.0, 0.0, LIFT), 0.0)
+    flight_legs(p, 1.0)
+    H = p.solve()[3]
+    feet_ahead = -0.5 * (H["foot_l"][1] + H["foot_r"][1])
+    z_end = -(min(H["foot_l"][2], H["foot_r"][2]) - (ANKLE_H + LIFT))      # root height at touchdown
+    z_off = 0.06                                            # legs extended, on the toes, at take-off
+    v_up = (z_end - z_off + 0.5 * G * flight ** 2) / flight
+    y_off = 0.03 - v_h * push / 2                           # where the push leaves the hips
+    y_td = y_off - distance                                 # root at touchdown
+    brake = 2 * (feet_ahead - 0.05) / v_h                   # stop with the hips 5 cm behind the foot line
+    y_stop = y_td - v_h * brake / 2
+    feet_y = y_td - feet_ahead
+    v_down = v_up - G * flight
+    drop_k = [(0.0, 0.012), (0.55, 0.020), (t_dip, 0.27)]
+    pitch_k = [(0.0, 2.0), (0.55, 6.0), (t_dip, 40.0)]
     arm_k = [(0.0, 0.0), (0.55, -10.0), (t_dip, -55.0), (t_off - 0.05, 120.0), (t_off + 0.15, 135.0), (t_land - 0.1, 70.0),
              (t_land + 0.12, 35.0), (t_land + 0.6, 10.0), (seconds, 0.0)]
-    land_drop_k = [(t_land, 0.05), (t_land + 0.16, 0.30), (t_land + 0.55, 0.10), (t_land + 1.0, 0.015), (seconds, 0.012)]
-    land_pitch_k = [(t_land, 15.0), (t_land + 0.16, 38.0), (t_land + 0.6, 12.0), (seconds, 3.0)]
+    t_bottom = t_land + 0.18
+    land_drop_k = [(t_bottom, 0.30), (t_land + 0.55, 0.10), (t_land + 1.0, 0.015), (seconds, 0.012)]
+    land_pitch_k = [(t_land, pitch_td), (t_land + 0.16, 38.0), (t_land + 0.6, 12.0), (seconds, 3.0)]
     for i in range(n):
         t = i / FPS
         p = Pose(skel)
         if t < t_off:
-            y_feet = 0.0
-            drop = interp_keys(t, drop_k)
-            pitch = interp_keys(t, pitch_k)
-            p.root((0.0, 0.03 * smooth(t / t_dip) - 0.06 * smooth((t - t_dip) / (t_off - t_dip)), LIFT - drop), 0.0)
+            if t < t_dip:
+                drop, y = interp_keys(t, drop_k), 0.03 * smooth(t / t_dip)
+                pitch = interp_keys(t, pitch_k)
+            else:                                           # push: accelerate into the take-off velocity
+                u = (t - t_dip) / push
+                drop = _hermite(0.27, -z_off, 0.0, -v_up * push, u)
+                y = 0.03 - v_h * push * u * u / 2
+                pitch = _hermite(pitch_k[-1][1], pitch_off, 0.0, (pitch_td - pitch_off) * push / flight, u)
+            p.root((0.0, y, LIFT - drop), 0.0)
             p.pelvis(pitch=pitch * 0.35)
             p.spine(pitch=pitch * 0.65)
             p.neck(pitch=-pitch * 0.55)
@@ -298,26 +419,22 @@ def jump(skel, seconds=3.2, distance=1.10):
                     p.leg(side, a2, a2 + np.array([0, -0.6, 0.45]), foot_rot=pitch_rot(-35.0 * k) @ skel.A[f"foot_{side}"], toe=35.0 * k)
         elif t < t_land:
             s = (t - t_off) / flight
-            y = -0.06 - distance * s
-            z = v_up * (t - t_off) - 0.5 * G * (t - t_off) ** 2
-            tuck = np.sin(np.pi * s) ** 1.2
-            p.root((0.0, y, LIFT + z - 0.0), 0.0)
-            p.pelvis(pitch=10 - 25 * tuck)
-            p.spine(pitch=8 + 10 * tuck)
-            p.neck(pitch=-10)
-            for side, sg in (("l", 1.0), ("r", -1.0)):
-                p.rot(f"thigh_{side}", 0, 20 + 75 * tuck - 15 * (1 - s)).rot(f"calf_{side}", 0, -(30 + 70 * tuck))
-                p.fingers(side, curl=0.3, thumb=0.3)
+            z = z_off + v_up * (t - t_off) - 0.5 * G * (t - t_off) ** 2
+            p.root((0.0, y_off - distance * s, LIFT + z), 0.0)
+            flight_legs(p, s)
         else:
-            y_l = -0.06 - distance
-            drop = interp_keys(t, land_drop_k)
+            tau = t - t_land
+            y = y_td - v_h * (tau - tau * tau / (2 * brake)) if tau < brake else y_stop
+            if t < t_bottom:                                # absorb: from the touchdown speed to the deepest squat
+                drop = _hermite(-z_end, 0.30, -v_down * (t_bottom - t_land), 0.0, tau / (t_bottom - t_land))
+            else:
+                drop = interp_keys(t, land_drop_k)
             pitch = interp_keys(t, land_pitch_k)
-            settle = smooth((t - t_land) / 0.9)
-            p.root((0.0, y_l - 0.10 * (1 - settle) + 0.0, LIFT - drop), 0.0)
+            p.root((0.0, y, LIFT - drop), 0.0)
             p.pelvis(pitch=pitch * 0.35)
             p.spine(pitch=pitch * 0.65)
             p.neck(pitch=-pitch * 0.55)
-            stand(skel, p, base=(0.0, y_l - 0.05), spread=0.12, stagger=0.0, curl=0.3)
+            stand(skel, p, base=(0.0, feet_y), spread=0.12, stagger=0.0, curl=0.3)
         # arms: swing in the sagittal plane around the shoulders
         a = np.radians(interp_keys(t, arm_k))
         q, loc, W, H = p.solve()
@@ -325,79 +442,118 @@ def jump(skel, seconds=3.2, distance=1.10):
             sh = H[f"upperarm_{side}"]
             reach = 0.52
             wrist = sh + np.array([sg * 0.10, -np.sin(a) * reach, -np.cos(a) * reach])
-            p.arm(side, wrist, sh + np.array([sg * 0.25, 0.4, -0.2]) if np.degrees(a) < 60 else sh + np.array([sg * 0.4, 0.2, 0.3]))
+            behind = np.array([sg * 0.6, np.cos(a), -np.sin(a)])        # elbow side of the swing plane, no flips
+            p.arm(side, wrist, sh + 0.35 * behind)
         out.append(solve(p, {"pelvis": np.array([0.0, H["pelvis"][1], 1.0])}))
     return out
 
 
 # ------------------------------------------------------------------ backflip
 def backflip(skel, seconds=3.3):
+    """Standing back tuck. The push accelerates the hips into the take-off velocity and spin, the
+    body turns about its centre of mass on a ballistic arc while it tucks, and the landing starts
+    from the touchdown velocity, so the pelvis path has no jumps for the rigid-body layer."""
     n = int(seconds * FPS)
-    t_dip, t_off, flight = 0.80, 1.05, 0.72
+    t_dip, t_off, flight = FLIP_TIMES
     t_land = t_off + flight
-    v_up = G * flight / 2
+    push = t_off - t_dip
+    travel = 0.30                                           # backflips drift backwards (+Y)
+    pitch_off, pitch_td = -12.0, 20.0                       # torso pitch at take-off and touchdown
+    spin = 0.15                                             # share of the turn made at constant rate
+    m_pitch = -360.0 * spin / flight / 0.35 * push          # the pelvis leaves turning at the flight rate
+    z_off = 0.05                                            # on the toes, legs extended, at take-off
+    drop_k = [(0.0, 0.012), (0.4, 0.02), (t_dip, 0.25)]
+    pitch_k = [(0.0, 2.0), (0.4, 5.0), (t_dip, 30.0)]
+    arm_k = [(0.0, 0.0), (0.4, -15.0), (t_dip, -60.0), (t_off, 150.0), (t_off + 0.12, 170.0), (t_off + 0.3 * flight, 162.0),
+             (t_land - 0.03, 62.0), (t_land + 0.2, 70.0), (t_land + 0.8, 20.0), (seconds, 0.0)]
+    t_bottom = t_land + 0.18
+    land_drop_k = [(t_bottom, 0.32), (t_land + 0.65, 0.10), (t_land + 1.1, 0.015), (seconds, 0.012)]
+    land_pitch_k = [(t_land, pitch_td), (t_land + 0.18, 42.0), (t_land + 0.7, 12.0), (seconds, 3.0)]
+
+    def ground(t, v_up):
+        p = Pose(skel)
+        if t < t_dip:
+            drop, pitch, y = interp_keys(t, drop_k), interp_keys(t, pitch_k), 0.02 * smooth(t / t_dip)
+        else:                                               # push: into the take-off velocity and spin
+            u = (t - t_dip) / push
+            drop = _hermite(0.25, -z_off, 0.0, -v_up * push, u)
+            pitch = _hermite(30.0, pitch_off, 0.0, m_pitch, u)
+            y = 0.02 + travel / flight * push * u * u / 2
+        p.root((0.0, y, LIFT - drop), 0.0)
+        p.pelvis(pitch=pitch * 0.35)
+        p.spine(pitch=pitch * 0.65)
+        p.neck(pitch=-pitch * 0.4 - 20 * smooth((t - t_dip) / 0.2))
+        ank = stand(skel, p, base=(0.0, 0.0), spread=0.11, stagger=0.0, curl=0.3)
+        if t > t_off - 0.10:
+            k = smooth((t - (t_off - 0.10)) / 0.10)
+            for side in ("l", "r"):
+                a2 = stance_ankle(ank[side], -30.0 * k)
+                p.leg(side, a2, a2 + np.array([0, -0.6, 0.45]), foot_rot=pitch_rot(-30.0 * k) @ skel.A[f"foot_{side}"], toe=30.0 * k)
+        return p
+
+    def shape(s):
+        """Flight body in its own frame: from the take-off shape through the tuck to the landing shape."""
+        tuck = smooth(s / 0.32) * (1 - smooth((s - 0.62) / 0.30))
+        leave = smooth(s / 0.2)
+        pitch = pitch_off + (pitch_td - pitch_off) * s
+        p = Pose(skel).root((0.0, 0.0, LIFT), 0.0)
+        p.pelvis(pitch=pitch * 0.35)
+        p.spine(pitch=pitch * 0.65 + 25 * tuck)
+        p.neck(pitch=(-pitch_off * 0.4 - 20) * (1 - s) - pitch_td * 0.5 * s + 25 * tuck)
+        for side in ("l", "r"):
+            p.rot(f"thigh_{side}", 0, 15 * leave + 110 * tuck).rot(f"calf_{side}", 0, -(20 * leave + 115 * tuck))
+            p.rot(f"foot_{side}", 0, -15 * tuck - 30 * (1 - leave))
+            p.fingers(side, curl=0.5, thumb=0.4)
+        return p
+
+    def air(s, v_up):
+        p = shape(s)
+        _, _, W, H = p.solve()
+        c_body = com(skel, W, H)
+        tau = s * flight
+        c_world = com0 + np.array([0.0, travel * s, v_up * tau - 0.5 * G * tau ** 2])
+        R = axis_angle([1, 0, 0], -360.0 * (smooth(s) * (1 - spin) + s * spin))   # head goes back (+Y)
+        # world rotation R at the pelvis: W_pelvis = W_root @ L @ B  ->  B' = L^T W_root^T R W_pelvis_old
+        L = skel.A["root"].T @ skel.A["pelvis"]
+        p.B["pelvis"] = L.T @ W["root"].T @ R @ W["pelvis"]
+        p.root_loc = p.root_loc + (c_world + R @ (H["pelvis"] - c_body) - H["pelvis"])
+        return p
+
+    _, _, W, H = ground(t_off, 0.0).solve()
+    com0 = com(skel, W, H)
+    # take-off speed: the arc that, without it, ends below the floor ends with the feet on it
+    H1 = air(1.0, 0.0).solve()[3]
+    v_up = (ANKLE_H + LIFT - min(H1["foot_l"][2], H1["foot_r"][2])) / flight
+    ds = 1.0 / (FPS * flight)
+    Hd, H1 = air(1.0 - ds, v_up).solve()[3], air(1.0, v_up).solve()[3]
+    v_td = (H1["pelvis"] - Hd["pelvis"]) * FPS
+    lp = Pose(skel).root((0.0, 0.0, 0.0), 0.0)
+    lp.pelvis(pitch=pitch_td * 0.35)
+    root_td = H1["pelvis"] - lp.solve()[3]["pelvis"]
+    feet_y = 0.5 * (H1["foot_l"][1] + H1["foot_r"][1])
+    brake = float(np.clip(2 * (feet_y - root_td[1]) / max(v_td[1], 1e-3), 0.12, 0.4))
     out = []
-    drop_k = [(0.0, 0.012), (0.4, 0.02), (t_dip, 0.25), (t_off - 0.02, 0.02), (t_off, 0.0)]
-    pitch_k = [(0.0, 2.0), (0.4, 5.0), (t_dip, 30.0), (t_off, -12.0)]
-    arm_k = [(0.0, 0.0), (0.4, -15.0), (t_dip, -60.0), (t_off, 150.0), (t_off + 0.12, 170.0)]
-    land_drop_k = [(t_land, 0.06), (t_land + 0.18, 0.32), (t_land + 0.65, 0.10), (t_land + 1.1, 0.015), (seconds, 0.012)]
-    land_pitch_k = [(t_land, 20.0), (t_land + 0.18, 42.0), (t_land + 0.7, 12.0), (seconds, 3.0)]
-    land_arm_k = [(t_land - 0.15, 60.0), (t_land + 0.2, 70.0), (t_land + 0.8, 20.0), (seconds, 0.0)]
-    travel = 0.30          # backflips drift backwards (+Y)
-    com0 = None
     for i in range(n):
         t = i / FPS
-        p = Pose(skel)
         if t < t_off:
-            drop = interp_keys(t, drop_k)
-            pitch = interp_keys(t, pitch_k)
-            p.root((0.0, 0.02 * smooth(t / t_dip), LIFT - drop), 0.0)
-            p.pelvis(pitch=pitch * 0.35)
-            p.spine(pitch=pitch * 0.65)
-            p.neck(pitch=-pitch * 0.4 - (20 if t > t_dip else 0) * smooth((t - t_dip) / 0.2))
-            ank = stand(skel, p, base=(0.0, 0.0), spread=0.11, stagger=0.0, curl=0.3)
-            if t > t_off - 0.10:
-                k = smooth((t - (t_off - 0.10)) / 0.10)
-                for side, sg in (("l", 1.0), ("r", -1.0)):
-                    a2 = stance_ankle(ank[side], -30.0 * k)
-                    p.leg(side, a2, a2 + np.array([0, -0.6, 0.45]), foot_rot=pitch_rot(-30.0 * k) @ skel.A[f"foot_{side}"], toe=30.0 * k)
-            a = np.radians(interp_keys(t, arm_k))
-            q, loc, W, H = p.solve()
-            if t > t_off - 0.25:
-                com0 = com(skel, W, H)
+            p = ground(t, v_up)
         elif t < t_land:
-            s = (t - t_off) / flight
-            tuck = smooth(s / 0.32) * (1 - smooth((s - 0.62) / 0.30))
-            ang = -360.0 * (smooth(s) * 0.85 + s * 0.15)        # backward rotation (pitch negative)
-            # body shape in its own frame (unrotated), then rotate about the COM
-            p.root((0.0, 0.0, LIFT), 0.0)
-            p.spine(pitch=10 + 25 * tuck)
-            p.neck(pitch=-15 + 25 * tuck)
-            for side, sg in (("l", 1.0), ("r", -1.0)):
-                p.rot(f"thigh_{side}", 0, 15 + 110 * tuck).rot(f"calf_{side}", 0, -(20 + 115 * tuck))
-                p.rot(f"foot_{side}", 0, -15 * tuck)
-                p.fingers(side, curl=0.5, thumb=0.4)
-            q, loc, W, H = p.solve()
-            c_body = com(skel, W, H)
-            c_world = com0 + np.array([0.0, travel * s, v_up * (t - t_off) - 0.5 * G * (t - t_off) ** 2])
-            R = axis_angle([1, 0, 0], ang)        # negative rotation about +X carries the head backwards (+Y)
-            pel = H["pelvis"]
-            # apply world rotation R at the pelvis: W_pelvis = W_root @ L @ B  ->  B' = L^T W_root^T R W_pelvis_old
-            L = skel.A["root"].T @ skel.A["pelvis"]
-            p.B["pelvis"] = L.T @ W["root"].T @ R @ W["pelvis"]
-            new_pel = c_world + R @ (pel - c_body)
-            p.root_loc = p.root_loc + (new_pel - pel)
-            a = np.radians(interp_keys(min(t, t_off + 0.2), arm_k)) if s < 0.25 else np.radians(160 - 100 * smooth((s - 0.25) / 0.7))
+            p = air((t - t_off) / flight, v_up)
         else:
-            drop = interp_keys(t, land_drop_k)
+            tau = t - t_land
+            y = root_td[1] + v_td[1] * (min(tau, brake) - min(tau, brake) ** 2 / (2 * brake))
+            if t < t_bottom:                                # absorb from the touchdown speed
+                drop = _hermite(LIFT - root_td[2], 0.32, -v_td[2] * (t_bottom - t_land), 0.0, tau / (t_bottom - t_land))
+            else:
+                drop = interp_keys(t, land_drop_k)
             pitch = interp_keys(t, land_pitch_k)
-            yl = travel + 0.02
-            p.root((0.0, yl, LIFT - drop), 0.0)
+            p = Pose(skel)
+            p.root((0.0, y, LIFT - drop), 0.0)
             p.pelvis(pitch=pitch * 0.35)
             p.spine(pitch=pitch * 0.65)
             p.neck(pitch=-pitch * 0.5)
-            stand(skel, p, base=(0.0, yl), spread=0.12, stagger=0.0, curl=0.3)
-            a = np.radians(interp_keys(t, land_arm_k))
+            stand(skel, p, base=(0.0, feet_y), spread=0.12, stagger=0.0, curl=0.3)
+        a = np.radians(interp_keys(t, arm_k))
         q, loc, W, H = p.solve()
         for side, sg in (("l", 1.0), ("r", -1.0)):
             sh = H[f"upperarm_{side}"]
@@ -511,12 +667,15 @@ def fall(skel, seconds=4.6, t_trip=1.90):
             sim.set_tone(("ankle",), 3.0, 0.8, 0.5, cap=25)
         elif k == 1 + int(0.18 * FPS):
             sim.pins.pop("trip", None)
-        elif k == int(1.0 * FPS):
-            # down: he lets the legs lie, turns his face aside and stays there, stunned
+        elif k == int(0.6 * FPS):
+            # knee and hands down: the legs stop stepping and go long behind him
             for s in ("l", "r"):
                 sim.goal(f"hip_{s}", (5, 0, 0))
                 sim.goal(f"knee_{s}", (12, 0, 0))
                 sim.goal(f"ankle_{s}", (-30, 0, 0))
+            sim.set_tone(("hip", "knee", "ankle"), 1.5, 0.9, 0.0, cap=40)
+        elif k == int(1.0 * FPS):
+            # down: he turns his face aside and stays there, stunned
             sim.goal("neck", (-5, 0, 30))
             sim.goal("skull", (-15, 0, 25))
             sim.set_tone(("hip", "knee", "ankle"), 1.0, 0.9, 0.0, cap=25)
@@ -524,7 +683,13 @@ def fall(skel, seconds=4.6, t_trip=1.90):
             sim.set_tone(("neck", "skull"), 2.0, 0.9, 0.6, cap=15)
             sim.set_tone(("shoulder", "elbow", "wrist"), 0.8, 0.9, 0.2, cap=20)
 
-    frames = physical(skel, refs, per_frame=per_frame)
+    strikes = heel_strikes(WALK, until=trip)
+
+    def hooks(sim, i):
+        strikes(sim, i)
+        per_frame(sim, i)
+
+    frames = toned(skel, refs, ((0.0, WALK_TONE),), hooks)
     return _follow_pelvis(frames, trip)
 
 
@@ -613,7 +778,7 @@ def shot(skel, seconds=4.6, t_hit=1.25):
         elif k == int(1.7 * FPS):
             sim.limp(ALL_KINDS)
 
-    frames = physical(skel, refs, per_frame=per_frame)
+    frames = toned(skel, refs, ((0.0, IDLE_TONE),), per_frame)
     # pain: the mouth falls open at the hit, the eyes squeeze, then half-closed and slack
     for i in range(hit + 1, n):
         k = i - hit
@@ -703,26 +868,108 @@ def punch(skel, seconds=4.6):
                 tgt = face + np.array([0.04, 0.0, -0.02])
                 hook_pt = np.array([-0.05, -0.50, 1.55])
                 wrist = base + (tgt - base) * jab + (hook_pt - base) * hook
-                pole = sh + np.array([0.35, 0.15, -0.35]) if hook < 0.2 else sh + np.array([0.3, 0.0, 0.25])
+                k = smooth(hook / 0.5)                      # elbow swings up and out for the hook
+                pole = sh + (1 - k) * np.array([0.35, 0.15, -0.35]) + k * np.array([0.3, 0.0, 0.25])
             else:
                 tgt = face + np.array([-0.02, 0.05, 0.0])
                 wrist = base + (tgt - base) * cross
                 pole = sh + np.array([-0.35, 0.2, -0.35])
+            # keep the elbow between 12 deg (punches snap without locking) and 135 deg (guard) of
+            # flexion, clear of both of its stops
+            L1, L2 = skel.length[f"upperarm_{side}"], skel.length[f"lowerarm_{side}"]
+            reach = lambda flex: np.sqrt(L1 * L1 + L2 * L2 + 2 * L1 * L2 * np.cos(np.radians(flex)))
+            d = wrist - sh
+            wrist = sh + nrm(d) * np.clip(np.linalg.norm(d), reach(135.0), reach(12.0))
             p.arm(side, wrist, pole, hand_twist=(-70.0 * (jab if side == "l" else cross) * sg) - 20 * s * sg)
             p.fingers(side, curl=0.35 + 0.65 * s, thumb=0.35 + 0.55 * s)
         out.append(solve(p, {"pelvis": np.array([0.0, 0.0, 1.05])}))
     return out
 
 
+# ------------------------------------------------------------------ physical versions of the kinematic clips
+# joint kinds -> (Hz, damping ratio, gravity compensation); lower Hz = looser, more lag and swing
+IDLE_TONE = ((("lumbar", "thoracic"), (4.0, 0.8, 1.0)), (("neck", "skull"), (3.5, 0.7, 1.0)),
+             (("shoulder",), (1.7, 0.45, 1.0)), (("elbow",), (2.0, 0.5, 1.0)), (("wrist",), (3.0, 0.6, 1.0)))
+WALK_TONE = ((("lumbar", "thoracic"), (4.5, 0.7, 1.0)), (("neck", "skull"), (6.5, 0.9, 1.0)),
+             (("shoulder",), (2.0, 0.45, 1.0)), (("elbow",), (2.5, 0.5, 1.0)), (("wrist",), (3.0, 0.55, 1.0)))
+RUN_TONE = ((("lumbar", "thoracic"), (5.5, 0.7, 1.0)), (("neck", "skull"), (7.5, 0.9, 1.0)),
+            (("shoulder",), (3.0, 0.5, 1.0)), (("elbow",), (3.5, 0.5, 1.0)), (("wrist",), (3.5, 0.55, 1.0)))
+# jumps: the arm swing drives the take-off, so the arms are firm until it is done, then relax and
+# follow through on the landing. The neck is braced throughout (a loose head whips on the push,
+# the spin and the impact). In flight nothing weighs on the joints (body and pelvis fall
+# together), so gravity compensation is off there.
+PUSH_TONE = ((("lumbar", "thoracic"), (8.0, 0.9, 1.0)), (("neck", "skull"), (12.0, 1.0, 1.0)),
+             (("shoulder",), (6.0, 0.8, 1.0)), (("elbow",), (5.0, 0.8, 1.0)), (("wrist",), (4.0, 0.7, 1.0)))
+FLIGHT_TONE = ((("lumbar", "thoracic"), (5.0, 0.75, 0.0)), (("neck", "skull"), (8.0, 0.9, 0.0)),
+               (("shoulder",), (2.5, 0.45, 0.0)), (("elbow",), (2.5, 0.5, 0.0)), (("wrist",), (3.0, 0.55, 0.0)))
+TUCK_TONE = ((("lumbar", "thoracic"), (7.0, 0.85, 0.0)), (("neck", "skull"), (12.0, 1.0, 0.0)),
+             (("shoulder",), (3.5, 0.5, 0.0)), (("elbow",), (3.0, 0.5, 0.0)), (("wrist",), (3.5, 0.55, 0.0)))
+LAND_TONE = ((("lumbar", "thoracic"), (6.5, 0.85, 1.0)), (("neck", "skull"), (11.0, 1.0, 1.0)),
+             (("shoulder",), (2.5, 0.45, 1.0)), (("elbow",), (2.5, 0.5, 1.0)), (("wrist",), (3.0, 0.55, 1.0)))
+CROUCH_TONE = ((("lumbar", "thoracic"), (4.5, 0.8, 1.0)), (("neck", "skull"), (3.5, 0.7, 1.0)),
+               (("shoulder",), (2.5, 0.5, 1.0)), (("elbow",), (2.5, 0.55, 1.0)), (("wrist",), (3.0, 0.6, 1.0)))
+PUNCH_TONE = ((("lumbar", "thoracic"), (8.0, 0.85, 1.0)), (("neck", "skull"), (9.0, 0.9, 1.0)),
+              (("shoulder",), (9.0, 0.75, 1.0)), (("elbow",), (9.0, 0.75, 1.0)), (("wrist",), (7.0, 0.75, 1.0)))
+
+
+def _airborne(tone):
+    return tuple((joints, (hz, zeta, 0.0)) for joints, (hz, zeta, _) in tone)
+
+
+JUMP_STAGES = ((0.0, PUSH_TONE), (JUMP_TIMES[1], _airborne(PUSH_TONE)), (JUMP_TIMES[1] + 0.2, FLIGHT_TONE),
+               (sum(JUMP_TIMES[1:]), LAND_TONE))
+FLIP_STAGES = ((0.0, PUSH_TONE), (FLIP_TIMES[1], _airborne(PUSH_TONE)), (FLIP_TIMES[1] + 0.15, TUCK_TONE),
+               (sum(FLIP_TIMES[1:]), LAND_TONE))
+
+
+def toned(skel, frames, stages, per_frame=None):
+    """physical() with muscle tone switched over time: stages = ((time, tone), ...) from time 0,
+    tone = (((joints or kinds), (Hz, zeta, comp)), ...) on top of the default."""
+    def apply(sim, tone):
+        for joints, args in tone:
+            sim.set_tone(joints, *args)
+
+    def staged(sim, i):
+        for t, tone in stages[1:]:
+            if i == int(round(t * FPS)):
+                apply(sim, tone)
+        if per_frame:
+            per_frame(sim, i)
+    return physical(skel, frames, lambda sim: apply(sim, stages[0][1]), staged)
+
+
+def heel_strikes(params, until=None):
+    """per_frame hook: at every heel strike the legs brake the pelvis while trunk, head and arms
+    keep going for a moment (a velocity kick on the free bodies). until: last frame it acts on."""
+    T = params["cycle"]
+
+    def per_frame(sim, i):
+        if until is not None and i > until:
+            return
+        for off in (0.0, 0.5):                  # left, right heel strike
+            if np.floor(i / FPS / T - off) > np.floor((i - 1) / FPS / T - off):
+                for b in sim.B:
+                    if not b.kin:
+                        sim.impulse(b, b.x, (0.0, -params["shock"][1] * b.mass, -params["shock"][0] * b.mass))
+    return per_frame
+
+
+def gait(skel, seconds, params, tone):
+    """Physical walk / run: the arms swing as loosely driven pendulums and every heel strike jolts
+    the free bodies."""
+    return toned(skel, locomotion(skel, seconds, params), ((0.0, tone),), heel_strikes(params))
+
+
 # ------------------------------------------------------------------ registry: name -> (frames, camera spec)
 CLIPS = {
-    "walk": lambda s: (locomotion(s, 4.4, WALK), {"offset": (2.9, -2.4, 0.25), "lens": 38, "smooth": 12}),
-    "run": lambda s: (locomotion(s, 3.0, RUN), {"offset": (3.6, -3.0, 0.20), "lens": 35, "smooth": 10}),
-    "idle": lambda s: (idle(s), {"offset": (2.2, -3.6, 0.0), "lens": 45, "smooth": 30}),
-    "jump": lambda s: (jump(s), {"offset": (3.4, -1.2, 0.0), "lens": 35, "smooth": 30}),
-    "backflip": lambda s: (backflip(s), {"offset": (3.6, 0.0, 0.1), "lens": 35, "smooth": 30}),
+    "walk": lambda s: (gait(s, 4.4, WALK, WALK_TONE), {"offset": (2.9, -2.4, 0.25), "lens": 38, "smooth": 12}),
+    "run": lambda s: (gait(s, 3.0, RUN, RUN_TONE), {"offset": (3.6, -3.0, 0.20), "lens": 35, "smooth": 10}),
+    "idle": lambda s: (toned(s, idle(s), ((0.0, IDLE_TONE),)), {"offset": (2.2, -3.6, 0.0), "lens": 45, "smooth": 30}),
+    "jump": lambda s: (toned(s, jump(s), JUMP_STAGES), {"offset": (3.4, -1.2, 0.0), "lens": 35, "smooth": 30}),
+    "backflip": lambda s: (toned(s, backflip(s), FLIP_STAGES), {"offset": (3.6, 0.0, 0.1), "lens": 35, "smooth": 30}),
     "fall": lambda s: (fall(s), {"offset": (3.0, -1.6, 0.0), "lens": 35, "smooth": 18}),
     "shot": lambda s: (shot(s), {"offset": (2.8, -2.2, 0.0), "lens": 38, "smooth": 20}),
-    "crouch": lambda s: (crouch(s), {"offset": (2.6, -3.2, -0.1), "lens": 40, "smooth": 30}),
-    "punch": lambda s: (punch(s), {"offset": (3.2, -2.0, 0.0), "lens": 40, "smooth": 30}),
+    "crouch": lambda s: (toned(s, crouch(s), ((0.0, CROUCH_TONE),)), {"offset": (2.6, -3.2, -0.1), "lens": 40,
+                                                                     "smooth": 30}),
+    "punch": lambda s: (toned(s, punch(s), ((0.0, PUNCH_TONE),)), {"offset": (3.2, -2.0, 0.0), "lens": 40, "smooth": 30}),
 }

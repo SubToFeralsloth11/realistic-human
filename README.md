@@ -19,7 +19,8 @@ flowchart LR
   C --> D[Region masks + skin weights<br>src/rh/masks.py, weights.py]
   C --> E[Hair strands grown against the SDF<br>src/rh/hair.py]
   D --> F[Blender: rig, skin, eyes, teeth,<br>hair, clothes, pistol]
-  G[Pose engine + motion generators<br>src/rh/pose.py, motions.py, gunplay.py, ragdoll.py] --> F
+  G[Pose engine + motion plans<br>src/rh/pose.py, motions.py, gunplay.py] --> P[Rigid-body physics<br>src/rh/physics.py]
+  P --> F
   F --> H[Cycles stills / EEVEE clips]
 ```
 
@@ -49,12 +50,26 @@ flowchart LR
 - **Rig.** 66 bones with Unreal-mannequin names, eyelid bones pivoting on the globe centre,
   forearm twist, jaw. Weights come from the sculpt itself: each primitive knows its bone, so
   region membership is a soft-min over the primitives' own distance fields.
-- **Motion.** A numpy pose engine (FK, analytic two-bone IK with per-bone hinge frames) drives
+- **Motion.** A numpy pose engine (FK, analytic two-bone IK with per-bone hinge frames) plans
   procedural, biomechanics-based clips: gait with heel strike / foot roll / toe-off and
   reach-consistent hip height, run, jump and backflip with ballistic flight about the centre of
-  mass, crouch, a punch combo, and the pistol routine (draw from the jeans pocket, three shots
-  with slide cycling and casings, reload from the other pocket, put it back). Falls and the hit
-  reaction hand over to a Verlet ragdoll with muscle tone, then reconstruct the bones from it.
+  mass, crouch, a punch combo, and the pistol routine. No clip is keyed straight onto the rig:
+  every one runs through an articulated rigid-body simulation of the body (below), so weight,
+  lag, follow-through and impacts come from dynamics.
+- **Physics.** `src/rh/physics.py` is an XPBD rigid-body solver (Mueller et al. 2020): 17
+  segments with de Leva (1996) masses for an 80 kg man and capsule shapes, ball sockets with
+  anatomical swing/twist limits (hinged knees and elbows), muscles as compliant drives toward
+  the planned pose with damping, torque caps and gravity compensation, Coulomb friction against
+  the ground and limb-on-body collisions, 24 substeps per frame. Pelvis and legs follow the plan;
+  trunk, head, arms and hands are simulated. The fall and the hit reaction are full ragdolls:
+  a trip with a protective arm reaction and a rescue step, and a chest hit where the legs hold
+  for 0.2 s, give, and the body collapses as muscle tone fades.
+- **Gun handling.** Pocket draw with the finger off the trigger, retention, a thumbs-forward
+  two-handed grip (finger joints solved so every fingertip lands on the pistol or the other
+  hand, never in it) pressed out to a sighted isosceles aim. The pistol is a 0.75 kg body welded
+  to the hand; each shot is a 3.2 N s impulse along the bore, so muzzle flip and recovery come
+  out of the arms. Reload with the magazine dropping free and the spare carried up the magwell,
+  scan, back into the pocket.
 
 ## Limitations
 
@@ -65,8 +80,9 @@ Honest about what "from scratch" reaches:
 - No cloth simulation: garments are skinned, so they do not swing or slide on the body. A hand
   or the pistol entering the pocket passes through the denim.
 - The face has jaw, eyelid and gaze controls but no full expression rig (no FACS shapes).
-- Hands have no knuckle creases or skin wrinkles, so they read as smooth in close-up; the support
-  hand's thumb rides the slide in the aiming pose.
+- Hands have no knuckle creases or skin wrinkles, so they read as smooth in close-up.
+- Balance is not simulated: while standing or walking the pelvis and legs follow the plan
+  (only the falls hand the whole body to physics).
 - A faint line remains down the right side of the neck in raking light, and the sneaker uppers
   have two small openings near the toe box.
 - The animation previews use EEVEE for speed (with the stubble carried by the skin shader, since
@@ -80,7 +96,7 @@ python3 src/build_hair.py build/human.npz  # hair strands                     ->
 python3 src/build_teeth.py                 # teeth, gums, tongue              -> build/teeth_*.npz
 python3 src/build_clothes.py               # t-shirt, jeans, sneakers         -> build/{shirt,jeans,shoes}.npz, pocket.json
 tools/render_all.sh                        # every clip to renders/clips + web copies in docs/media/clips
-python3 -m unittest discover tests         # IK, ragdoll and anatomy regression tests (~40 s, no Blender)
+python3 -m unittest discover tests         # IK, physics, ragdoll, pistol and anatomy regression tests (no Blender)
 ```
 
 Blender scripts (run with `blender -b --factory-startup --python <script> -- <args>`; on this
@@ -107,7 +123,8 @@ machine every Blender run goes through `~/.agents/bin/heavy`):
 | `src/rh/skeleton.py`, `body.py`, `head.py`, `ear.py`, `hand.py`, `foot.py`, `teeth.py` | anatomy |
 | `src/rh/masks.py`, `weights.py`, `rig.py` | shading masks, skin weights, bones |
 | `src/rh/hair.py`, `clothes.py` | strand growth, garments |
-| `src/rh/pose.py`, `motions.py`, `gunplay.py`, `ragdoll.py` | animation |
+| `src/rh/pose.py`, `motions.py`, `gunplay.py` | pose engine, clip plans, pistol routine |
+| `src/rh/physics.py` | rigid-body body model and solver (physical animation, ragdolls) |
 | `tools/` | progress-site CLI, batch clip renderer, contact sheets |
 | `blender/` | Blender-side assembly, shaders, rendering |
 | `docs/` | the progress site (GitHub Pages) |
